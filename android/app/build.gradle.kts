@@ -1,0 +1,72 @@
+import java.util.Properties
+import java.io.FileInputStream
+
+plugins {
+    id("com.android.application")
+    // Flutter Gradle Plugin mesti diaplikasikan selepas plugin Android & Kotlin.
+    id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Muat konfigurasi tandatangan daripada key.properties (jika ada).
+// CI menyediakan fail ini daripada GitHub Secrets (KEYSTORE_BASE64, dll).
+// Jika tiada, build release terus menggunakan debug signing supaya
+// build tetap berjaya.
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+}
+
+android {
+    namespace = "com.dmsender.discord_media_sender"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    defaultConfig {
+        applicationId = "com.dmsender.discord_media_sender"
+        // Kebutuhan minimum aplikasi (selamat untuk kebanyakan peranti).
+        minSdk = 24
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
+
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig = if (keystorePropertiesFile.exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+            // Shrink & obfuscate untuk saiz APK yang kemas.
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
+flutter {
+    source = "../.."
+}

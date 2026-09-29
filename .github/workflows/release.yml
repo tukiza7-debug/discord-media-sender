@@ -1,0 +1,109 @@
+# Release automatik: push tag v* atau cetusan manual dengan input "version".
+# Membina APK bertandatangan (atau debug signing jika secrets tiada),
+# menjana checksum SHA256 dan mencipta GitHub Release.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versi untuk release (contoh: 1.0.0 atau v1.0.0)'
+        required: true
+        default: '1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Bina & Terbitkan Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout kod
+        uses: actions/checkout@v4
+
+      - name: Sediakan Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Sediakan Flutter (stable + cache pub)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/wrapper/gradle-wrapper.properties', 'pubspec.lock') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Tentukan nombor versi
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            RAW="${{ github.event.inputs.version }}"
+          else
+            RAW="${{ github.ref_name }}"
+          fi
+          RAW="${RAW#v}"
+          echo "version=$RAW" >> "$GITHUB_OUTPUT"
+          echo "Versi release: $RAW"
+
+      - name: Sediakan keystore daripada secrets (jika ada)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > android/app/upload-keystore.jks
+            cat > android/key.properties <<EOF
+          storeFile=upload-keystore.jks
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          storePassword=$STORE_PASSWORD
+          EOF
+            echo "Keystore release dikesan - APK akan ditandatangan dengan kunci release."
+          else
+            echo "Tiada KEYSTORE_BASE64 - build terus dengan debug signing supaya tetap berjaya."
+          fi
+
+      - name: Dapatkan dependensi
+        run: flutter pub get
+
+      - name: Bina APK split per ABI
+        run: flutter build apk --release --split-per-abi --build-name=${{ steps.ver.outputs.version }} --build-number=${{ github.run_number }}
+
+      - name: Bina APK universal
+        run: flutter build apk --release --build-name=${{ steps.ver.outputs.version }} --build-number=${{ github.run_number }}
+
+      - name: Namakan fail & jana checksum SHA256
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          mkdir -p release_out
+          cp build/app/outputs/flutter-apk/app-release.apk           "release_out/DiscordMediaSender-v${V}-universal.apk"
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "release_out/DiscordMediaSender-v${V}-armeabi-v7a.apk"
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk   "release_out/DiscordMediaSender-v${V}-arm64-v8a.apk"
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk      "release_out/DiscordMediaSender-v${V}-x86_64.apk"
+          cd release_out
+          sha256sum *.apk > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Cipta GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: Discord Media Sender v${{ steps.ver.outputs.version }}
+          files: release_out/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true

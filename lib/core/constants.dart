@@ -1,0 +1,79 @@
+/// Had & pemalar aplikasi + katalog media yang disokong.
+class AppLimits {
+  AppLimits._();
+
+  static const int maxFiles = 5000;
+  static const int batchSize = 10; // had Discord: 10 lampiran per mesej
+  static const int captionMaxLength = 2000;
+  static const int maxRetries = 3;
+  static const int maxRateLimitWaits = 6;
+  static const int responseLogCapacity = 500;
+
+  /// Had saiz per jenis fail (dilaksanakan pada sisi aplikasi).
+  static const int maxImageBytes = 25 * 1024 * 1024; // 25 MB
+  static const int maxVideoBytes = 1024 * 1024 * 1024; // 1 GB
+  static const int maxZipBytes = 1024 * 1024 * 1024; // 1 GB
+
+  /// Backoff eksponensial antara percubaan semula (saat).
+  static const List<int> retryBackoffSeconds = [1, 2, 4];
+}
+
+/// Asas API Discord (versi v10).
+class DiscordConstants {
+  DiscordConstants._();
+  static const apiBase = 'https://discord.com/api/v10';
+}
+
+/// Ekstensi media yang disokong + pemetaan MIME.
+class MediaCatalog {
+  MediaCatalog._();
+
+  static const imageExtensions = [
+    'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif',
+  ];
+
+  static const videoExtensions = [
+    'mp4', 'webm', 'mov', 'mkv', 'avi', 'mpeg', 'mpg', 'ogg', 'ogv', '3gp',
+  ];
+
+  /// Senarai ekstensi untuk pilihan fail (tanpa titik).
+  static List<String> get allowedExtensions => [...imageExtensions, ...videoExtensions];
+
+  static bool isSupported(String fileName) {
+    final ext = _extOf(fileName);
+    return imageExtensions.contains(ext) || videoExtensions.contains(ext);
+  }
+
+  static bool isImage(String fileName) => imageExtensions.contains(_extOf(fileName));
+  static bool isVideo(String fileName) => videoExtensions.contains(_extOf(fileName));
+
+  static String mimeType(String fileName) {
+    final ext = _extOf(fileName);
+    const map = <String, String>{
+      'png': 'image/png',
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'gif': 'image/gif',
+      'webp': 'image/webp',
+      'bmp': 'image/bmp',
+      'avif': 'image/avif',
+      'mp4': 'video/mp4',
+      'webm': 'video/webm',
+      'mov': 'video/quicktime',
+      'mkv': 'video/x-matroska',
+      'avi': 'video/x-msvideo',
+      'mpeg': 'video/mpeg',
+      'mpg': 'video/mpeg',
+      'ogg': 'video/ogg',
+      'ogv': 'video/ogg',
+      '3gp': 'video/3gpp',
+    };
+    return map[ext] ?? 'application/octet-stream';
+  }
+
+  static String _extOf(String fileName) {
+    final dot = fileName.lastIndexOf('.');
+    if (dot < 0 || dot == fileName.length - 1) return '';
+    return fileName.substring(dot + 1).toLowerCase();
+  }
+}

@@ -19,7 +19,9 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.dmsender.discord_media_sender"
-    compileSdk = flutter.compileSdkVersion
+    // 36 diperlukan oleh flutter_plugin_android_lifecycle (kebergantungan
+    // file_picker). Kekalkan eksplisit supaya build stabil merentas versi.
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

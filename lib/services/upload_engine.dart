@@ -45,21 +45,21 @@ class UploadEngine {
   void pause() {
     if (!_busy) return;
     _paused = true;
-    _push(state: EngineState.paused, message: 'Dijeda');
+    _push(state: EngineState.paused, message: 'Paused');
   }
 
   void resume() {
     if (!_busy) return;
     _paused = false;
-    _push(state: EngineState.running, message: 'Bersambung');
+    _push(state: EngineState.running, message: 'Resumed');
   }
 
   Future<void> cancel() async {
     if (!_busy) return;
     _cancelRequested = true;
     _paused = false;
-    _push(state: EngineState.cancelling, message: 'Membatalkan...');
-    _cancelToken?.cancel('Dibatalkan oleh pengguna');
+    _push(state: EngineState.cancelling, message: 'Cancelling...');
+    _cancelToken?.cancel('Cancelled by user');
   }
 
   // --- emisi progres ---------------------------------------------------
@@ -106,7 +106,7 @@ class UploadEngine {
     required OnBatchFailed onBatchFailed,
     OnForegroundUpdate? onForegroundUpdate,
   }) async {
-    if (_busy) return 'sedang-berjalan';
+    if (_busy) return 'already-running';
     _busy = true;
     _paused = false;
     _cancelRequested = false;
@@ -128,7 +128,7 @@ class UploadEngine {
       uploadedBytes: 0,
       totalBytes: totalBytes,
       speedMBps: 0,
-      message: 'Memulakan...',
+      message: 'Starting...',
     );
     _controller!.add(_last);
 
@@ -161,8 +161,8 @@ class UploadEngine {
         _push(
           state: EngineState.running,
           currentBatch: b + 1,
-          message: 'Menghantar batch ${b + 1}/${batches.length}'
-              '${attempt > 1 ? ' (cubaan $attempt)' : ''}',
+          message: 'Sending batch ${b + 1}/${batches.length}'
+              '${attempt > 1 ? ' (attempt $attempt)' : ''}',
         );
 
         final sw = Stopwatch()..start();
@@ -197,7 +197,7 @@ class UploadEngine {
           _push(
             state: EngineState.running,
             currentBatch: b + 1,
-            message: 'Gagal ($lastMsg). Cuba semula dalam ${backoffForAttempt(attempt)}s',
+            message: 'Failed ($lastMsg). Retrying in ${backoffForAttempt(attempt)}s',
           );
           final completed = await interruptibleWait(
             milliseconds: waitMs,
@@ -231,7 +231,7 @@ class UploadEngine {
         failedFiles: failedFiles,
         uploadedBytes: uploadedBytes,
         speedMBps: speed,
-        message: ok ? 'Batch ${b + 1}/${batches.length} selesai' : 'Batch ${b + 1} gagal',
+        message: ok ? 'Batch ${b + 1}/${batches.length} done' : 'Batch ${b + 1} failed',
       );
       onForegroundUpdate?.call(
         b + 1,
@@ -244,13 +244,13 @@ class UploadEngine {
 
     final String status;
     if (wasCancelled) {
-      status = 'dibatalkan';
+      status = 'cancelled';
     } else if (failedFiles == 0) {
-      status = 'selesai';
+      status = 'completed';
     } else if (successFiles == 0) {
-      status = 'gagal';
+      status = 'failed';
     } else {
-      status = 'separa';
+      status = 'partial';
     }
 
     _push(
@@ -260,7 +260,7 @@ class UploadEngine {
       successFiles: successFiles,
       failedFiles: failedFiles,
       uploadedBytes: uploadedBytes,
-      message: wasCancelled ? 'Dibatalkan' : 'Selesai',
+      message: wasCancelled ? 'Cancelled' : 'Finished',
     );
 
     _cancelToken = null;

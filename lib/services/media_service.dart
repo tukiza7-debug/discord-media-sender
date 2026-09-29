@@ -30,7 +30,7 @@ class MediaService {
   /// diperlukan.
   Future<MediaPickResult> pickMediaFiles() async {
     final res = await FilePicker.pickFiles(
-      dialogTitle: 'Pilih fail media',
+      dialogTitle: 'Pick media files',
       type: FileType.custom,
       allowedExtensions: MediaCatalog.allowedExtensions,
       compressionQuality: 0,
@@ -42,7 +42,7 @@ class MediaService {
   /// Pilih ZIP dan ekstrak semua media di dalamnya secara automatik.
   Future<MediaPickResult> pickZip() async {
     final res = await FilePicker.pickFiles(
-      dialogTitle: 'Pilih fail ZIP',
+      dialogTitle: 'Pick a ZIP file',
       type: FileType.custom,
       allowedExtensions: const ['zip'],
     );
@@ -50,7 +50,7 @@ class MediaService {
     final f = res.first;
     final zipPath = f.path;
     if (zipPath == null) {
-      return const MediaPickResult(items: [], info: 'Fail ZIP tidak sah');
+      return const MediaPickResult(items: [], info: 'Invalid ZIP file');
     }
     return extractZip(zipPath);
   }
@@ -63,7 +63,7 @@ class MediaService {
   /// dipaparkan serta-merta selepas imbasan selesai.
   Future<MediaPickResult> pickFolder() async {
     final dirPath = await FilePicker.getDirectoryPath(
-      dialogTitle: 'Pilih folder media',
+      dialogTitle: 'Pick a media folder',
     );
     if (dirPath == null) return const MediaPickResult(items: []);
 
@@ -73,8 +73,8 @@ class MediaService {
     if (!granted) {
       return const MediaPickResult(
         items: [],
-        info: 'Kebenaran akses foto & video diperlukan untuk mengimbas '
-            'folder. Benarkan dalam Tetapan sistem → Kebenaran.',
+        info: 'Photo & video access permission is required to scan '
+            'folders. Allow it in System Settings → Permissions.',
       );
     }
 
@@ -83,7 +83,7 @@ class MediaService {
     if (res.items.isEmpty && res.skipped.isEmpty && res.info == null) {
       return const MediaPickResult(
         items: [],
-        info: 'Tiada fail media yang disokong dijumpai dalam folder ini',
+        info: 'No supported media files found in this folder',
       );
     }
     return res;
@@ -107,7 +107,7 @@ class MediaService {
   static MediaPickResult scanFolderSync(String rootPath) {
     final dir = Directory(rootPath);
     if (!dir.existsSync()) {
-      return const MediaPickResult(items: [], info: 'Folder tidak dijumpai');
+      return const MediaPickResult(items: [], info: 'Folder not found');
     }
 
     final found = <File>[];
@@ -146,8 +146,8 @@ class MediaService {
       } catch (_) {
         return const MediaPickResult(
           items: [],
-          info: 'Folder tidak dapat dibaca. Semak kebenaran akses storan '
-              'aplikasi dalam Tetapan sistem.',
+          info: 'The folder could not be read. Check the app storage '
+              'permission in System Settings.',
         );
       }
     }
@@ -160,11 +160,11 @@ class MediaService {
   Future<MediaPickResult> extractZip(String zipPath) async {
     final zf = File(zipPath);
     if (!zf.existsSync()) {
-      return const MediaPickResult(items: [], info: 'Fail ZIP tidak dijumpai');
+      return const MediaPickResult(items: [], info: 'ZIP file not found');
     }
     if (zf.lengthSync() > AppLimits.maxZipBytes) {
       return const MediaPickResult(
-          items: [], info: 'Fail ZIP melebihi had 1 GB dan dilangkau');
+          items: [], info: 'ZIP file exceeds the 1 GB limit and was skipped');
     }
     try {
       final bytes = zf.readAsBytesSync();
@@ -190,12 +190,12 @@ class MediaService {
       archive.clear();
       if (extracted.isEmpty) {
         return const MediaPickResult(
-            items: [], info: 'Tiada fail media di dalam ZIP ini');
+            items: [], info: 'No media files inside this ZIP');
       }
       return _validate(extracted.map(_fromFile).toList(),
           context: 'ZIP: ${zipPath.split('/').last}');
     } catch (err) {
-      return MediaPickResult(items: const [], info: 'Gagal ekstrak ZIP: $err');
+      return MediaPickResult(items: const [], info: 'Failed to extract ZIP: $err');
     }
   }
 
@@ -219,23 +219,23 @@ class MediaService {
 
     for (final f in files) {
       if (items.length >= AppLimits.maxFiles) {
-        skipped.add('${f.name} — melebihi had ${AppLimits.maxFiles} fail');
+        skipped.add('${f.name} — exceeds the ${AppLimits.maxFiles} file limit');
         continue;
       }
       if (f.path.isEmpty || !File(f.path).existsSync()) {
-        skipped.add('${f.name} — fail tidak dijumpai');
+        skipped.add('${f.name} — file not found');
         continue;
       }
       if (!MediaCatalog.isSupported(f.name)) {
-        skipped.add('${f.name} — jenis fail tidak disokong');
+        skipped.add('${f.name} — unsupported file type');
         continue;
       }
       final isImage = MediaCatalog.isImage(f.name);
       final limit = isImage ? AppLimits.maxImageBytes : AppLimits.maxVideoBytes;
       if (f.sizeBytes > limit) {
-        final limitLabel = isImage ? '25 MB (gambar)' : '1 GB (video)';
-        items.add(_item(f, MediaStatus.oversized, 'Melebihi had $limitLabel'));
-        skipped.add('${f.name} — melebihi had $limitLabel');
+        final limitLabel = isImage ? '25 MB (image)' : '1 GB (video)';
+        items.add(_item(f, MediaStatus.oversized, 'Exceeds the $limitLabel limit'));
+        skipped.add('${f.name} — exceeds the $limitLabel limit');
         continue;
       }
       items.add(_item(f, MediaStatus.ready, null));

@@ -318,7 +318,7 @@ class SessionRecord {
   final int totalFiles;
   final int successCount;
   final int failedCount;
-  final String status; // 'selesai' | 'separa' | 'gagal' | 'dibatalkan'
+  final String status; // 'completed' | 'partial' | 'failed' | 'cancelled'
 
   Map<String, dynamic> toMap() => {
         'id': id,
@@ -341,8 +341,20 @@ class SessionRecord {
         totalFiles: (m['total_files'] ?? 0) as int,
         successCount: (m['success'] ?? 0) as int,
         failedCount: (m['failed'] ?? 0) as int,
-        status: (m['status'] ?? 'selesai') as String,
+        // Normalise legacy Malay status keys written by older versions.
+        status: _normalizeStatus((m['status'] ?? 'completed') as String),
       );
+
+  static String _normalizeStatus(String s) {
+    const legacy = {
+      'selesai': 'completed',
+      'separa': 'partial',
+      'gagal': 'failed',
+      'dibatalkan': 'cancelled',
+      'berjalan': 'running',
+    };
+    return legacy[s] ?? s;
+  }
 }
 
 /// Rekod kegagalan (batch/fail yang gagal selepas 3 cubaan).

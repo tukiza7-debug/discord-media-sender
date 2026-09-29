@@ -1,7 +1,7 @@
 name: discord_media_sender
 description: Aplikasi Android untuk menghantar media pukal ke Discord melalui webhook atau bot.
 publish_to: 'none'
-version: 1.0.3+1
+version: 1.0.4+1
 
 environment:
   sdk: ^3.13.4

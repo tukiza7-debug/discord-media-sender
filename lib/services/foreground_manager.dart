@@ -17,8 +17,8 @@ class ForegroundManager {
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
         channelId: 'dms_upload_channel',
-        channelName: 'Hantaran Media',
-        channelDescription: 'Paparkan kemajuan hantaran media ke Discord.',
+        channelName: 'Media Uploads',
+        channelDescription: 'Shows the progress of media uploads to Discord.',
         channelImportance: NotificationChannelImportance.LOW,
         priority: NotificationPriority.LOW,
         showWhen: false,

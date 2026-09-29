@@ -50,33 +50,33 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final pages = const [
       _OnboardingPage(
         icon: LucideIcons.globe,
-        title: 'Sambung dengan Webhook',
+        title: 'Connect with a Webhook',
         steps: [
-          'Buka Tetapan Server di Discord > Integrasi > Webhook',
-          'Tekan "Webhook Baru" dan pilih channel sasaran',
-          'Salin URL Webhook dan tampal dalam app',
+          'Open Server Settings in Discord > Integrations > Webhooks',
+          'Tap "New Webhook" and pick the target channel',
+          'Copy the Webhook URL and paste it into the app',
         ],
-        note: 'Webhook ialah cara paling pantas tanpa perlu cipta bot.',
+        note: 'A webhook is the fastest way — no bot creation needed.',
       ),
       _OnboardingPage(
         icon: LucideIcons.bot,
-        title: 'Atau Guna Bot Token',
+        title: 'Or Use a Bot Token',
         steps: [
-          'Buka discord.com/developers/applications > New Application',
-          'Pergi ke tab Bot > Reset Token > salin token',
-          'Tambah bot ke server, kemudian masukkan Channel ID\n(Aktifkan Developer Mode > klik kanan channel > Salin ID)',
+          'Open discord.com/developers/applications > New Application',
+          'Go to the Bot tab > Reset Token > copy the token',
+          'Add the bot to your server, then enter the Channel ID\n(Enable Developer Mode > right-click the channel > Copy ID)',
         ],
-        note: 'Mod bot membolehkan anda memilih/mencipta channel terus dari app.',
+        note: 'Bot mode lets you pick/create channels directly from the app.',
       ),
       _OnboardingPage(
         icon: LucideIcons.upload,
-        title: 'Pilih & Hantar',
+        title: 'Pick & Send',
         steps: [
-          'Pilih Media, Folder penuh (Sent Folder) atau fail ZIP',
-          'ZIP diekstrak automatik; maksimum 5,000 fail',
-          'Tulis kapsyen (pilihan) dan tekan Hantar',
+          'Pick Media, a whole Folder (Sent Folder) or a ZIP file',
+          'ZIP files are extracted automatically; up to 5,000 files',
+          'Write a caption (optional) and tap Send',
         ],
-        note: 'Progres dipantau di skrin Respons; hantaran terus berjalan di latar belakang.',
+        note: 'Progress is tracked on the Responses screen; sending keeps running in the background.',
       ),
     ];
 
@@ -119,7 +119,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 children: [
                   TextButton(
                     onPressed: _finish,
-                    child: const Text('Lewati'),
+                    child: const Text('Skip'),
                   ),
                   const Spacer(),
                   FilledButton.icon(
@@ -134,7 +134,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                         );
                       }
                     },
-                    icon: Text(isLast ? 'Mula' : 'Seterusnya'),
+                    icon: Text(isLast ? 'Start' : 'Next'),
                     label: Icon(
                       isLast ? LucideIcons.send : LucideIcons.chevronRight,
                       size: 17,

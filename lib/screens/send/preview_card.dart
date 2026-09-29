@@ -27,7 +27,7 @@ class MessagePreview extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionLabel('Pratonton Mesej Discord'),
+        const SectionLabel('Discord Message Preview'),
         AppCard(
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -48,9 +48,9 @@ class MessagePreview extends ConsumerWidget {
                               Flexible(
                                 child: Text(
                                   config.mode == SendMode.bot
-                                      ? 'Bot Anda'
+                                      ? 'Your Bot'
                                       : (config.botName.isEmpty
-                                          ? 'Nama Bot'
+                                          ? 'Bot Name'
                                           : config.botName),
                                   style: Theme.of(context).textTheme.titleSmall,
                                   maxLines: 1,
@@ -61,7 +61,7 @@ class MessagePreview extends ConsumerWidget {
                               const AppTag(),
                               const SizedBox(width: 6),
                               Text(
-                                'Hari ini jam ${formatClockShort(DateTime.now())}',
+                                'Today at ${formatClockShort(DateTime.now())}',
                                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                                       color: AppColors.textFaint,
                                     ),
@@ -72,8 +72,8 @@ class MessagePreview extends ConsumerWidget {
                           Text(
                             caption.isEmpty
                                 ? (firstBatch.isEmpty
-                                    ? 'Tiada mesej — pilih media atau tulis kapsyen'
-                                    : 'Tiada kapsyen')
+                                    ? 'No message — pick media or write a caption'
+                                    : 'No caption')
                                 : caption,
                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                   color: caption.isEmpty
@@ -132,7 +132,7 @@ class MessagePreview extends ConsumerWidget {
                           size: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
                       const SizedBox(width: 5),
                       Text(
-                        'Batch pertama: ${firstBatch.length} fail '
+                        'First batch: ${firstBatch.length} files '
                         '(${formatBytes(firstBatch.fold<int>(0, (s, f) => s + f.sizeBytes))})',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: Theme.of(context).colorScheme.onSurfaceVariant,

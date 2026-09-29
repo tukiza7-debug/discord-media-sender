@@ -97,7 +97,7 @@ void main() {
     (tester) async {
       await pumpRail(tester, const Size(411, 915));
 
-      for (final label in ['Hantar', 'Respons', 'Sejarah', 'Gagal', 'Tetapan']) {
+      for (final label in ['Send', 'Responses', 'History', 'Failed', 'Settings']) {
         expect(find.text(label), findsOneWidget, reason: 'Label $label hilang');
       }
       expect(find.byIcon(LucideIcons.settings).hitTestable(), findsOneWidget);

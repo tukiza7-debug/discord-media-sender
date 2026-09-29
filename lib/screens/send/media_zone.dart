@@ -26,7 +26,7 @@ class MediaZone extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SectionLabel(
-          'Pilih Media',
+          'Pick Media',
           trailing: items.isEmpty
               ? null
               : TextButton.icon(
@@ -39,15 +39,15 @@ class MediaZone extends ConsumerWidget {
                       : () async {
                           final ok = await confirmDialog(
                             context,
-                            title: 'Kosongkan semua?',
+                            title: 'Clear everything?',
                             message:
-                                '${items.length} fail akan dibuang daripada senarai.',
-                            confirmLabel: 'Kosongkan',
+                                '${items.length} files will be removed from the list.',
+                            confirmLabel: 'Clear',
                           );
                           if (ok) ref.read(mediaListProvider.notifier).clearAll();
                         },
                   icon: const Icon(LucideIcons.trash2, size: 14),
-                  label: const Text('Kosongkan'),
+                  label: const Text('Clear'),
                 ),
         ),
         // Butang dilumpuhkan & dimalapkan semasa imbasan berjalan.
@@ -62,7 +62,7 @@ class MediaZone extends ConsumerWidget {
                   child: _PickAction(
                     icon: LucideIcons.image,
                     label: 'Media',
-                    hint: 'Gambar / video',
+                    hint: 'Photos / videos',
                     onTap: () => _pick(context, ref, PickAction.files),
                   ),
                 ),
@@ -71,7 +71,7 @@ class MediaZone extends ConsumerWidget {
                   child: _PickAction(
                     icon: LucideIcons.folder,
                     label: 'Folder',
-                    hint: 'Semua subfolder',
+                    hint: 'All subfolders',
                     onTap: () => _pick(context, ref, PickAction.folder),
                   ),
                 ),
@@ -80,7 +80,7 @@ class MediaZone extends ConsumerWidget {
                   child: _PickAction(
                     icon: LucideIcons.fileArchive,
                     label: 'ZIP',
-                    hint: 'Ekstrak automatik',
+                    hint: 'Auto extract',
                     onTap: () => _pick(context, ref, PickAction.zip),
                   ),
                 ),
@@ -107,7 +107,7 @@ class MediaZone extends ConsumerWidget {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Mengimbas media… folder besar mungkin mengambil masa sebentar.',
+                          'Scanning media… large folders may take a moment.',
                           style: Theme.of(context).textTheme.labelMedium?.copyWith(
                                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                               ),
@@ -125,16 +125,16 @@ class MediaZone extends ConsumerWidget {
           Row(
             children: [
               Text(
-                '${items.length} fail dipilih',
+                '${items.length} files selected',
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
               ),
               const SizedBox(width: 8),
-              SoftBadge('$ready sedia', color: AppColors.success, icon: LucideIcons.check),
+              SoftBadge('$ready ready', color: AppColors.success, icon: LucideIcons.check),
               if (skipped > 0) ...[
                 const SizedBox(width: 6),
-                SoftBadge('$skipped dilangkau', color: AppColors.warning),
+                SoftBadge('$skipped skipped', color: AppColors.warning),
               ],
             ],
           ),
@@ -149,13 +149,13 @@ class MediaZone extends ConsumerWidget {
     final busy = ref.read(mediaScanBusyProvider.notifier);
     final messenger = ScaffoldMessenger.of(context);
 
-    busy.state = true; // penunjuk 'Mengimbas…' muncul serta-merta
+    busy.state = true; // the 'Scanning…' indicator appears instantly
     String? info;
     try {
       info = await notifier.pick(action);
     } catch (err) {
-      // Jangan biarkan UI 'tergantung' tanpa maklum balas jika ralat.
-      info = 'Ralat semasa memilih media: $err';
+      // Never leave the UI hanging without feedback on error.
+      info = 'Error while picking media: $err';
     } finally {
       busy.state = false;
     }
@@ -241,7 +241,7 @@ class MediaTile extends ConsumerWidget {
                   child: Padding(
                     padding: const EdgeInsets.all(4),
                     child: Text(
-                      item.note ?? 'Dilangkau',
+                      item.note ?? 'Skipped',
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                             color: AppColors.warning,
                             fontWeight: FontWeight.w700,

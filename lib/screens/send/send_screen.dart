@@ -179,8 +179,8 @@ class _ResponsesBanner extends ConsumerWidget {
                         Expanded(
                           child: Text(
                             upload.isRunning
-                                ? 'Hantaran sedang berjalan — Lihat Respons'
-                                : 'Lihat Respons',
+                                ? 'Sending in progress — View Responses'
+                                : 'View Responses',
                             style: Theme.of(context).textTheme.labelLarge?.copyWith(
                                   color: Theme.of(context).colorScheme.onSecondaryContainer,
                                 ),
@@ -261,7 +261,7 @@ class CaptionField extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionLabel('Mesej (pilihan)'),
+        const SectionLabel('Message (optional)'),
         TextField(
           maxLength: 2000,
           minLines: 3,
@@ -269,7 +269,7 @@ class CaptionField extends ConsumerWidget {
           textInputAction: TextInputAction.newline,
           onChanged: (v) => ref.read(captionProvider.notifier).state = v,
           decoration: const InputDecoration(
-            hintText: 'Tulis mesej untuk dihantar bersama batch pertama...',
+            hintText: 'Write a message to send with the first batch...',
           ),
           buildCounter: (context,
                   {required currentLength, required isFocused, maxLength}) =>
@@ -284,7 +284,7 @@ class CaptionField extends ConsumerWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          'Kapsyen hanya dihantar bersama batch pertama.',
+          'The caption is only sent with the first batch.',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -313,7 +313,7 @@ class _BottomBar extends ConsumerWidget {
       height: 52,
       child: FilledButton.icon(
         icon: const Icon(LucideIcons.send, size: 18),
-        label: Text(canSend ? 'Hantar ($readyCount fail)' : 'Pilih media dahulu'),
+        label: Text(canSend ? 'Send ($readyCount files)' : 'Pick media first'),
         onPressed: canSend ? () => _send(context, ref) : null,
       ),
     );
@@ -360,7 +360,7 @@ class _BottomBar extends ConsumerWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                upload.progress.message ?? 'Sesi selesai',
+                upload.progress.message ?? 'Session finished',
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
@@ -380,7 +380,7 @@ class _BottomBar extends ConsumerWidget {
     final caption = ref.read(captionProvider);
 
     if (!config.readyToSend) {
-      showAppSnackBar(context, 'Lengkapkan konfigurasi dahulu (URL webhook / token bot).',
+      showAppSnackBar(context, 'Complete the configuration first (webhook URL / bot token).',
           error: true);
       return;
     }
@@ -393,7 +393,7 @@ class _BottomBar extends ConsumerWidget {
     ref.read(failedProvider.notifier).load();
 
     if (context.mounted && result != null) {
-      showAppSnackBar(context, result, success: !result.startsWith('Gagal'));
+      showAppSnackBar(context, result, success: !result.startsWith('Failed'));
     }
   }
 }
@@ -431,7 +431,7 @@ class _RunningBar extends ConsumerWidget {
                 upload.state == EngineState.paused ? LucideIcons.play : LucideIcons.pause,
                 size: 20,
               ),
-              tooltip: upload.state == EngineState.paused ? 'Sambung' : 'Jeda',
+              tooltip: upload.state == EngineState.paused ? 'Resume' : 'Pause',
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -442,7 +442,7 @@ class _RunningBar extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          p.message ?? 'Menghantar...',
+                          p.message ?? 'Sending...',
                           style: Theme.of(context).textTheme.labelMedium,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -476,14 +476,14 @@ class _RunningBar extends ConsumerWidget {
               onPressed: () async {
                 final ok = await confirmDialog(
                   context,
-                  title: 'Batalkan hantaran?',
-                  message: 'Fail yang belum dihantar akan ditanda gagal/dibatalkan.',
-                  confirmLabel: 'Batal Hantar',
+                  title: 'Cancel sending?',
+                  message: 'Files that were not sent will be marked as failed/cancelled.',
+                  confirmLabel: 'Cancel Send',
                 );
                 if (ok) await controller.cancel();
               },
               icon: const Icon(LucideIcons.x, size: 20, color: AppColors.danger),
-              tooltip: 'Batal',
+              tooltip: 'Cancel',
             ),
           ],
         ),

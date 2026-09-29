@@ -69,10 +69,10 @@ class UploadController extends StateNotifier<UploadUiState> {
     required SendConfig config,
     required String caption,
   }) async {
-    if (state.isRunning) return 'Hantaran sedang berjalan';
+    if (state.isRunning) return 'A send is already running';
     final sendable = items.where((m) => m.status.canSend).toList(growable: false);
-    if (sendable.isEmpty) return 'Tiada fail sedia untuk dihantar';
-    if (!config.readyToSend) return 'Konfigurasi tidak lengkap';
+    if (sendable.isEmpty) return 'No files are ready to send';
+    if (!config.readyToSend) return 'Configuration is incomplete';
 
     // Kebenaran notifikasi (Android 13+).
     try {
@@ -82,8 +82,8 @@ class UploadController extends StateNotifier<UploadUiState> {
     } catch (_) {}
 
     await ForegroundManager.start(
-      'Menghantar media ke Discord',
-      'Menyediakan ${sendable.length} fail...',
+      'Sending media to Discord',
+      'Preparing ${sendable.length} files...',
     );
 
     // Cipta rekod sesi.
@@ -99,7 +99,7 @@ class UploadController extends StateNotifier<UploadUiState> {
       totalFiles: sendable.length,
       successCount: 0,
       failedCount: 0,
-      status: 'berjalan',
+      status: 'running',
     ));
 
     state = state.copyWith(state: EngineState.running, activeSessionId: sessionId);
@@ -124,7 +124,7 @@ class UploadController extends StateNotifier<UploadUiState> {
               sizeBytes: f.sizeBytes,
               batchIndex: batchIndex,
               httpCode: httpCode,
-              errorMessage: errorMessage ?? 'Ralat tidak diketahui',
+              errorMessage: errorMessage ?? 'Unknown error',
               mode: mode,
               target: target,
               createdAt: DateTime.now(),
@@ -133,7 +133,7 @@ class UploadController extends StateNotifier<UploadUiState> {
       },
       onForegroundUpdate: (batch, totalBatches, percent) {
         ForegroundManager.update(
-          'Menghantar media ke Discord',
+          'Sending media to Discord',
           ForegroundManager.progressText(
             batch: batch,
             totalBatches: totalBatches,
@@ -161,7 +161,7 @@ class UploadController extends StateNotifier<UploadUiState> {
       lastFinishedStatus: status,
       clearSession: true,
     );
-    return '${describeStatus(status)}: $successCount berjaya, $failedCount gagal';
+    return '${describeStatus(status)}: $successCount succeeded, $failedCount failed';
   }
 
   void pause() => _engine.pause();
@@ -176,14 +176,14 @@ class UploadController extends StateNotifier<UploadUiState> {
 
   static String describeStatus(String s) {
     switch (s) {
-      case 'selesai':
-        return 'Selesai';
-      case 'separa':
-        return 'Separa berjaya';
-      case 'gagal':
-        return 'Gagal';
-      case 'dibatalkan':
-        return 'Dibatalkan';
+      case 'completed':
+        return 'Completed';
+      case 'partial':
+        return 'Partially successful';
+      case 'failed':
+        return 'Failed';
+      case 'cancelled':
+        return 'Cancelled';
       default:
         return s;
     }
@@ -194,7 +194,7 @@ final uploadControllerProvider =
     StateNotifierProvider<UploadController, UploadUiState>((ref) => UploadController(ref));
 
 /// Format ringkas untuk butang sticky.
-String sendButtonLabel(int readyCount) => 'Hantar ($readyCount fail)';
+String sendButtonLabel(int readyCount) => 'Send ($readyCount files)';
 
 String? describeStatusText(String? s) =>
     s == null ? null : UploadController.describeStatus(s);

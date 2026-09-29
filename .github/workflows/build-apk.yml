@@ -61,6 +61,26 @@ jobs:
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "Versi APK: v$V (versionCode/build: ${{ github.run_number }})"
 
+      - name: Sediakan keystore stabil daripada secrets (tandatangan konsisten merentas build)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > android/app/upload-keystore.jks
+            cat > android/key.properties <<EOF
+          storeFile=upload-keystore.jks
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          storePassword=$STORE_PASSWORD
+          EOF
+            echo "Keystore stabil dikesan - APK akan ditandatangani dengan kunci release tetap."
+          else
+            echo "Tiada KEYSTORE_BASE64 - build terus dengan debug signing (tandatangan TIDAK stabil)."
+          fi
+
       - name: Bina APK (split per ABI)
         run: flutter build apk --release --split-per-abi --build-name=${{ steps.ver.outputs.version }} --build-number=${{ github.run_number }}
 
@@ -73,6 +93,19 @@ jobs:
           echo "Dibina dengan --build-name=${{ steps.ver.outputs.version }} --build-number=${{ github.run_number }}"
           test -f build/app/outputs/flutter-apk/app-release.apk
 
+      - name: Audit tandatangan & versi APK (rekod untuk rujukan)
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+          AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1)
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          {
+            echo "== Sijil tandatangan (apksigner) =="
+            "$APKSIGNER" verify --print-certs "$APK" | grep -E 'certificate SHA-256|certificate DN' || true
+            echo "== Versi APK (aapt2 dump badging) =="
+            "$AAPT" dump badging "$APK" | grep -E '^package:' || true
+            echo "SHA256 sijil mesti SAMA merentas release supaya kemas kini boleh dipasang terus."
+          } | tee apk_signing_audit.txt
+
       - name: Susun nama fail APK (mengandungi versi)
         run: |
           V="${{ steps.ver.outputs.version }}"
@@ -82,7 +115,10 @@ jobs:
           cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk apk_out/DiscordMediaSender-v${V}-armeabi-v7a.apk
           cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk   apk_out/DiscordMediaSender-v${V}-arm64-v8a.apk
           cp build/app/outputs/flutter-apk/app-x86_64-release.apk      apk_out/DiscordMediaSender-v${V}-x86_64.apk
-          echo "Versi build (versionCode): $B" > apk_out/BUILD_INFO.txt
+          {
+            echo "Versi build (versionCode): $B"
+            cat apk_signing_audit.txt
+          } > apk_out/BUILD_INFO.txt
           ls -la apk_out
 
       - name: Muat naik artifact

@@ -13,11 +13,11 @@ extension AppThemeModeX on AppThemeMode {
   String get label {
     switch (this) {
       case AppThemeMode.dark:
-        return 'Gelap';
+        return 'Dark';
       case AppThemeMode.light:
-        return 'Terahang';
+        return 'Light';
       case AppThemeMode.system:
-        return 'Sistem';
+        return 'System';
     }
   }
 
@@ -42,7 +42,7 @@ extension OrientationSettingX on OrientationSetting {
       case OrientationSetting.auto:
         return 'Auto';
       case OrientationSetting.portrait:
-        return 'Potret';
+        return 'Portrait';
       case OrientationSetting.landscape:
         return 'Landscape';
     }

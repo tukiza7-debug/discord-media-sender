@@ -52,16 +52,16 @@ class ProgressCard extends ConsumerWidget {
                     children: [
                       Text(
                         upload.state == EngineState.paused
-                            ? 'Hantaran Dijeda'
+                            ? 'Upload Paused'
                             : (upload.state == EngineState.cancelling
-                                ? 'Membatalkan...'
-                                : 'Menghantar ke Discord'),
+                                ? 'Cancelling...'
+                                : 'Sending to Discord'),
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 2),
                       Text(
                         'Batch ${p.currentBatch}/${p.totalBatches} • '
-                        '${p.successFiles} berjaya • ${p.failedFiles} gagal',
+                        '${p.successFiles} succeeded • ${p.failedFiles} failed',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
@@ -125,25 +125,25 @@ class _Stats extends StatelessWidget {
       _StatCell(
         icon: LucideIcons.checkCircle,
         color: AppColors.success,
-        label: 'Berjaya',
+        label: 'Succeeded',
         value: '${p.successFiles}',
       ),
       _StatCell(
         icon: LucideIcons.alertCircle,
         color: AppColors.danger,
-        label: 'Gagal',
+        label: 'Failed',
         value: '${p.failedFiles}',
       ),
       _StatCell(
         icon: LucideIcons.zap,
         color: AppColors.info,
-        label: 'Kelajuan',
+        label: 'Speed',
         value: formatSpeed(p.speedMBps),
       ),
       _StatCell(
         icon: LucideIcons.upload,
         color: AppColors.blurpleBright,
-        label: 'Dimuat naik',
+        label: 'Uploaded',
         value: formatBytes(p.uploadedBytes),
       ),
     ];
@@ -236,7 +236,7 @@ class _Controls extends ConsumerWidget {
               }
             },
             icon: Icon(paused ? LucideIcons.play : LucideIcons.pause, size: 16),
-            label: Text(paused ? 'Sambung' : 'Jeda'),
+            label: Text(paused ? 'Resume' : 'Pause'),
           ),
         ),
         const SizedBox(width: 10),
@@ -245,7 +245,7 @@ class _Controls extends ConsumerWidget {
             style: OutlinedButton.styleFrom(foregroundColor: AppColors.danger),
             onPressed: () => controller.cancel(),
             icon: const Icon(LucideIcons.x, size: 16),
-            label: const Text('Batal'),
+            label: const Text('Cancel'),
           ),
         ),
       ],

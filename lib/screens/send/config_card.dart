@@ -55,15 +55,15 @@ class _ConfigCardState extends ConsumerState<ConfigCard> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Konfigurasi Hantaran',
+                        Text('Send Configuration',
                             style: Theme.of(context).textTheme.titleMedium),
                         const SizedBox(height: 2),
                         Text(
                           config.readyToSend
                               ? (config.mode == SendMode.webhook
-                                  ? 'Webhook • sedia'
+                                  ? 'Webhook • ready'
                                   : 'Bot • #${config.channelName.isEmpty ? config.channelId : config.channelName}')
-                              : 'Belum disediakan',
+                              : 'Not set up yet',
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                 color: config.readyToSend
                                     ? AppColors.success
@@ -208,7 +208,7 @@ class _WebhookFieldsState extends ConsumerState<_WebhookFields> {
                 controller: _nameCtrl,
                 onChanged: (v) => ref.read(configProvider.notifier).setBotName(v),
                 decoration: const InputDecoration(
-                  labelText: 'Nama bot (pilihan)',
+                  labelText: 'Bot name (optional)',
                   hintText: 'Media Sender',
                 ),
               ),
@@ -220,7 +220,7 @@ class _WebhookFieldsState extends ConsumerState<_WebhookFields> {
                 keyboardType: TextInputType.url,
                 onChanged: (v) => ref.read(configProvider.notifier).setAvatarUrl(v),
                 decoration: const InputDecoration(
-                  labelText: 'URL avatar (pilihan)',
+                  labelText: 'Avatar URL (optional)',
                   hintText: 'https://...',
                 ),
               ),
@@ -273,15 +273,15 @@ class _BotFieldsState extends ConsumerState<_BotFields> {
           enableSuggestions: false,
           onChanged: (v) => ref.read(configProvider.notifier).setBotToken(v),
           decoration: InputDecoration(
-            labelText: 'Token Bot',
-            hintText: 'Masukkan token daripada Developer Portal',
+            labelText: 'Bot Token',
+            hintText: 'Paste the token from the Developer Portal',
             prefixIcon: const Icon(LucideIcons.lock, size: 18),
             suffixIcon: IconButton(
               icon: Icon(
                   widget.obscureToken ? LucideIcons.eyeOff : LucideIcons.eye,
                   size: 18),
               onPressed: widget.toggleObscure,
-              tooltip: widget.obscureToken ? 'Tunjukkan' : 'Sembunyikan',
+              tooltip: widget.obscureToken ? 'Show' : 'Hide',
             ),
           ),
         ),
@@ -298,7 +298,7 @@ class _BotFieldsState extends ConsumerState<_BotFields> {
                     ref.read(configProvider.notifier).setChannel(id: v),
                 decoration: const InputDecoration(
                   labelText: 'Channel ID',
-                  hintText: 'Contoh: 1234567890123456789',
+                  hintText: 'Example: 1234567890123456789',
                 ),
               ),
             ),
@@ -306,7 +306,7 @@ class _BotFieldsState extends ConsumerState<_BotFields> {
             OutlinedButton.icon(
               onPressed: () => _openChannelPicker(context, ref),
               icon: const Icon(LucideIcons.hash, size: 16),
-              label: const Text('Pilih'),
+              label: const Text('Pick'),
             ),
           ],
         ),
@@ -318,7 +318,7 @@ class _BotFieldsState extends ConsumerState<_BotFields> {
                 const Icon(LucideIcons.hash, size: 13, color: AppColors.textFaint),
                 const SizedBox(width: 4),
                 Text(
-                  'Channel terpilih: #${config.channelName}',
+                  'Selected channel: #${config.channelName}',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -332,7 +332,7 @@ class _BotFieldsState extends ConsumerState<_BotFields> {
           child: TextButton.icon(
             onPressed: () => _openCreateChannel(context, ref),
             icon: const Icon(LucideIcons.plus, size: 16),
-            label: const Text('Cipta channel baru'),
+            label: const Text('Create new channel'),
           ),
         ),
       ],
@@ -342,7 +342,7 @@ class _BotFieldsState extends ConsumerState<_BotFields> {
   Future<void> _openChannelPicker(BuildContext context, WidgetRef ref) async {
     final config = ref.read(configProvider);
     if (config.botToken.trim().isEmpty) {
-      showAppSnackBar(context, 'Masukkan token bot dahulu.', error: true);
+      showAppSnackBar(context, 'Enter the bot token first.', error: true);
       return;
     }
     final sel = await showModalBottomSheet<ChannelInfo>(
@@ -354,7 +354,7 @@ class _BotFieldsState extends ConsumerState<_BotFields> {
       _channelCtrl.text = sel.id;
       await ref.read(configProvider.notifier).setChannel(id: sel.id, name: sel.name);
       if (context.mounted) {
-        showAppSnackBar(context, 'Channel dipilih: #${sel.name}', success: true);
+        showAppSnackBar(context, 'Channel selected: #${sel.name}', success: true);
       }
     }
   }
@@ -362,7 +362,7 @@ class _BotFieldsState extends ConsumerState<_BotFields> {
   Future<void> _openCreateChannel(BuildContext context, WidgetRef ref) async {
     final config = ref.read(configProvider);
     if (config.botToken.trim().isEmpty) {
-      showAppSnackBar(context, 'Masukkan token bot dahulu.', error: true);
+      showAppSnackBar(context, 'Enter the bot token first.', error: true);
       return;
     }
     await showModalBottomSheet<bool>(
@@ -407,9 +407,9 @@ class _ChannelPickerSheetState extends State<_ChannelPickerSheet> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Pilih Channel', style: Theme.of(context).textTheme.titleLarge),
+              Text('Pick a Channel', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 4),
-              Text('Pilih server, kemudian pilih channel teks.',
+              Text('Pick a server, then pick a text channel.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       )),
@@ -425,13 +425,13 @@ class _ChannelPickerSheetState extends State<_ChannelPickerSheet> {
                   }
                   if (snap.hasError) {
                     return Text(
-                      'Gagal memuatkan server: ${ErrorTranslator.explain(error: snap.error).title}',
+                      'Failed to load servers: ${ErrorTranslator.explain(error: snap.error).title}',
                       style: const TextStyle(color: AppColors.danger),
                     );
                   }
                   final guilds = snap.data ?? [];
                   if (guilds.isEmpty) {
-                    return const Text('Tiada server dijumpai untuk bot ini.');
+                    return const Text('No servers found for this bot.');
                   }
                   return Flexible(
                     child: ListView.builder(
@@ -477,12 +477,12 @@ class _ChannelPickerSheetState extends State<_ChannelPickerSheet> {
                       );
                     }
                     if (snap.hasError) {
-                      return const Text('Gagal memuatkan channel.',
+                      return const Text('Failed to load channels.',
                           style: TextStyle(color: AppColors.danger));
                     }
                     final channels = snap.data ?? [];
                     if (channels.isEmpty) {
-                      return const Text('Tiada channel teks di server ini.');
+                      return const Text('No text channels in this server.');
                     }
                     return Flexible(
                       child: ListView.builder(
@@ -545,12 +545,12 @@ class _CreateChannelSheetState extends State<_CreateChannelSheet> {
           .createChannel(token: widget.token, guildId: _guild!.id, name: _nameCtrl.text.trim());
       if (!mounted) return;
       Navigator.of(context).pop();
-      showAppSnackBar(context, 'Channel dicipta: #${ch.name}', success: true);
+      showAppSnackBar(context, 'Channel created: #${ch.name}', success: true);
     } catch (e) {
       if (!mounted) return;
       setState(() => _creating = false);
       final expl = ErrorTranslator.explain(error: e);
-      showAppSnackBar(context, 'Gagal cipta channel: ${expl.title}', error: true);
+      showAppSnackBar(context, 'Failed to create channel: ${expl.title}', error: true);
     }
   }
 
@@ -568,7 +568,7 @@ class _CreateChannelSheetState extends State<_CreateChannelSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Cipta Channel Baru', style: Theme.of(context).textTheme.titleLarge),
+              Text('Create a New Channel', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 16),
               FutureBuilder<List<GuildInfo>>(
                 future: _guilds,
@@ -598,8 +598,8 @@ class _CreateChannelSheetState extends State<_CreateChannelSheet> {
                 textInputAction: TextInputAction.done,
                 onSubmitted: (_) => _create(),
                 decoration: const InputDecoration(
-                  labelText: 'Nama channel',
-                  hintText: 'media-hantar',
+                  labelText: 'Channel name',
+                  hintText: 'media-upload',
                   prefixIcon: Icon(LucideIcons.hash, size: 18),
                 ),
               ),
@@ -612,7 +612,7 @@ class _CreateChannelSheetState extends State<_CreateChannelSheet> {
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const Icon(LucideIcons.plus, size: 17),
-                label: Text(_creating ? 'Mencipta...' : 'Cipta Channel'),
+                label: Text(_creating ? 'Creating...' : 'Create Channel'),
               ),
             ],
           ),
@@ -643,7 +643,7 @@ class _TestSection extends StatelessWidget {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(LucideIcons.zap, size: 16),
-          label: Text(testing ? 'Menguji...' : 'Uji Sambungan'),
+          label: Text(testing ? 'Testing...' : 'Test Connection'),
         ),
         if (result != null) ...[
           const SizedBox(height: 10),

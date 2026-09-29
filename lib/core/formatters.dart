@@ -1,9 +1,9 @@
-/// Pembantu pemformatan paparan (BM).
+/// Display formatting helpers.
 library;
 
-const _bmMonths = [
-  'Jan', 'Feb', 'Mac', 'Apr', 'Mei', 'Jun',
-  'Jul', 'Ogo', 'Sep', 'Okt', 'Nov', 'Dis',
+const _months = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
 ];
 
 String formatBytes(int bytes) {
@@ -55,19 +55,19 @@ String formatClock(DateTime t) => '${_two(t.hour)}:${_two(t.minute)}:${_two(t.se
 String formatClockShort(DateTime t) => '${_two(t.hour)}:${_two(t.minute)}';
 
 /// 12 Sep 2026
-String formatDate(DateTime d) => '${d.day} ${_bmMonths[d.month - 1]} ${d.year}';
+String formatDate(DateTime d) => '${d.day} ${_months[d.month - 1]} ${d.year}';
 
 /// 12 Sep 2026, 09:41
 String formatDateTime(DateTime d) => '${formatDate(d)}, ${formatClockShort(d)}';
 
-/// 'Hari Ini' / 'Semalam' / tarikh penuh
+/// 'Today' / 'Yesterday' / full date
 String formatRelativeDay(DateTime d) {
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
   final that = DateTime(d.year, d.month, d.day);
   final diff = today.difference(that).inDays;
-  if (diff == 0) return 'Hari Ini';
-  if (diff == 1) return 'Semalam';
+  if (diff == 0) return 'Today';
+  if (diff == 1) return 'Yesterday';
   return formatDate(d);
 }
 

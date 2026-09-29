@@ -88,7 +88,7 @@ class StatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = statusColor(context, status: status, statusCode: statusCode);
     final text = label ??
-        (statusCode?.toString() ?? (status == LogStatus.networkError ? 'RANGKAIAN' : '—'));
+        (statusCode?.toString() ?? (status == LogStatus.networkError ? 'NETWORK' : '—'));
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: small ? 7 : AppSpacing.sm,
@@ -269,8 +269,8 @@ class _RateLimitCountdownState extends State<RateLimitCountdown> {
         const SizedBox(width: 5),
         Text(
           done
-              ? 'Menyambung semula...'
-              : 'Tunggu ${formatCountdown(remaining)} sebelum cuba semula automatik',
+              ? 'Reconnecting...'
+              : 'Wait ${formatCountdown(remaining)} before automatic retry',
           style: Theme.of(context)
               .textTheme
               .labelSmall
@@ -319,7 +319,7 @@ Future<bool> confirmDialog(
   BuildContext context, {
   required String title,
   required String message,
-  String confirmLabel = 'Padam',
+  String confirmLabel = 'Delete',
   bool destructive = true,
 }) async {
   final res = await showDialog<bool>(
@@ -330,7 +330,7 @@ Future<bool> confirmDialog(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(false),
-          child: const Text('Batal'),
+          child: const Text('Cancel'),
         ),
         FilledButton(
           style: destructive

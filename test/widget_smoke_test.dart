@@ -18,14 +18,14 @@ void main() {
         home: Scaffold(
           body: EmptyState(
             icon: Icons.inbox,
-            title: 'Tiada sejarah lagi',
-            subtitle: 'Hantar sesuatu untuk lihat respons Discord di sini.',
+            title: 'No history yet',
+            subtitle: 'Send something to see Discord responses here.',
           ),
         ),
       ),
     );
-    expect(find.text('Tiada sejarah lagi'), findsOneWidget);
-    expect(find.text('Hantar sesuatu untuk lihat respons Discord di sini.'), findsOneWidget);
+    expect(find.text('No history yet'), findsOneWidget);
+    expect(find.text('Send something to see Discord responses here.'), findsOneWidget);
   });
 
   testWidgets('StatusBadge memaparkan kod status', (tester) async {
@@ -43,12 +43,12 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(
-          body: JsonView(json: {'message': 'Berjaya', 'code': 0}, initiallyExpanded: true),
+          body: JsonView(json: {'message': 'Success', 'code': 0}, initiallyExpanded: true),
         ),
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('BADAN RESPONS (JSON)'), findsOneWidget);
-    expect(find.textContaining('Berjaya'), findsOneWidget);
+    expect(find.text('RESPONSE BODY (JSON)'), findsOneWidget);
+    expect(find.textContaining('Success'), findsOneWidget);
   });
 }

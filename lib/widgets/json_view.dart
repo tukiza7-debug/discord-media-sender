@@ -98,7 +98,7 @@ class _JsonViewState extends State<JsonView> {
               child: Row(
                 children: [
                   Text(
-                    'BADAN RESPONS (JSON)',
+                    'RESPONSE BODY (JSON)',
                     style: label.copyWith(
                       color: AppColors.textSecondary,
                       fontWeight: FontWeight.w700,

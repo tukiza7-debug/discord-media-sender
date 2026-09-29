@@ -1,4 +1,4 @@
-/// Validasi input konfigurasi dengan mesej ralat Bahasa Melayu.
+/// Validates configuration input with clear English error messages.
 class Validators {
   Validators._();
 
@@ -14,40 +14,40 @@ class Validators {
 
   static String? webhookUrl(String? v) {
     final value = v?.trim() ?? '';
-    if (value.isEmpty) return 'URL webhook diperlukan';
+    if (value.isEmpty) return 'Webhook URL is required';
     if (!value.startsWith('https://')) {
-      return 'URL mesti bermula dengan https://';
+      return 'The URL must start with https://';
     }
     if (!_webhookRe.hasMatch(value)) {
-      return 'Format URL webhook tidak sah';
+      return 'Invalid webhook URL format';
     }
     return null;
   }
 
   static String? botToken(String? v) {
     final value = v?.trim() ?? '';
-    if (value.isEmpty) return 'Token bot diperlukan';
+    if (value.isEmpty) return 'Bot token is required';
     if (!_tokenRe.hasMatch(value)) {
-      return 'Format token bot tidak sah';
+      return 'Invalid bot token format';
     }
     return null;
   }
 
   static String? channelId(String? v) {
     final value = v?.trim() ?? '';
-    if (value.isEmpty) return 'Channel ID diperlukan';
+    if (value.isEmpty) return 'Channel ID is required';
     if (!_channelIdRe.hasMatch(value)) {
-      return 'Channel ID mesti nombor (snowflake)';
+      return 'The Channel ID must be numeric (snowflake)';
     }
     return null;
   }
 
   static String? avatarUrl(String? v) {
     final value = v?.trim() ?? '';
-    if (value.isEmpty) return null; // pilihan
+    if (value.isEmpty) return null; // optional
     final ok = Uri.tryParse(value);
     if (ok == null || !ok.isAbsolute || !value.startsWith('http')) {
-      return 'URL avatar tidak sah';
+      return 'Invalid avatar URL';
     }
     return null;
   }

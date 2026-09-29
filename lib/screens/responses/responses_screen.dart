@@ -111,7 +111,7 @@ class _ListPaneState extends ConsumerState<_ListPane> {
                             ref.read(responseQueryProvider.notifier).state = v,
                         style: Theme.of(context).textTheme.bodyMedium,
                         decoration: InputDecoration(
-                          hintText: 'Cari kod status atau nama fail...',
+                          hintText: 'Search status code or file name...',
                           prefixIcon: const Icon(LucideIcons.search, size: 16),
                           contentPadding:
                               const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -124,7 +124,7 @@ class _ListPaneState extends ConsumerState<_ListPane> {
                   _IconToggle(
                     active: console,
                     icon: LucideIcons.terminal,
-                    tooltip: 'Mod konsol',
+                    tooltip: 'Console mode',
                     onTap: () =>
                         ref.read(consoleModeProvider.notifier).state = !console,
                   ),
@@ -138,13 +138,13 @@ class _ListPaneState extends ConsumerState<_ListPane> {
                   _IconToggle(
                     active: false,
                     icon: LucideIcons.download,
-                    tooltip: 'Eksport log',
+                    tooltip: 'Export log',
                     onTap: () => _exportLog(context, ref),
                   ),
                   _IconToggle(
                     active: false,
                     icon: LucideIcons.trash2,
-                    tooltip: 'Kosongkan log',
+                    tooltip: 'Clear log',
                     danger: true,
                     onTap: () => _clearLog(context, ref),
                   ),
@@ -181,7 +181,7 @@ class _ListPaneState extends ConsumerState<_ListPane> {
                   child: entries.isEmpty
                       ? const Center(
                           child: Text(
-                            'Belum ada respons. Hantar sesuatu untuk lihat respons Discord di sini.',
+                            'No responses yet. Send something to see Discord responses here.',
                             style: TextStyle(color: AppColors.textFaint, fontSize: 12.5),
                             textAlign: TextAlign.center,
                           ),
@@ -191,9 +191,9 @@ class _ListPaneState extends ConsumerState<_ListPane> {
               : entries.isEmpty
                   ? EmptyState(
                       icon: LucideIcons.inbox,
-                      title: 'Belum ada respons',
+                      title: 'No responses yet',
                       subtitle:
-                          'Hantar sesuatu untuk lihat respons Discord di sini.',
+                          'Send something to see Discord responses here.',
                     )
                   : ListView.builder(
                       controller: _scrollCtrl,
@@ -216,7 +216,7 @@ class _ListPaneState extends ConsumerState<_ListPane> {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => Scaffold(
-            appBar: AppBar(title: const Text('Butiran Respons')),
+            appBar: AppBar(title: const Text('Response Details')),
             body: SafeArea(child: ResponseDetailView(entry: e)),
           ),
         ),
@@ -227,7 +227,7 @@ class _ListPaneState extends ConsumerState<_ListPane> {
   Future<void> _exportLog(BuildContext context, WidgetRef ref) async {
     final entries = ref.read(responseLogProvider);
     if (entries.isEmpty) {
-      showAppSnackBar(context, 'Tiada log untuk dieksport.');
+      showAppSnackBar(context, 'No log entries to export.');
       return;
     }
     final pick = await showModalBottomSheet<String>(
@@ -238,12 +238,12 @@ class _ListPaneState extends ConsumerState<_ListPane> {
           children: [
             ListTile(
               leading: const Icon(LucideIcons.fileArchive),
-              title: const Text('Eksport sebagai JSON'),
+              title: const Text('Export as JSON'),
               onTap: () => Navigator.pop(ctx, 'json'),
             ),
             ListTile(
               leading: const Icon(LucideIcons.fileArchive),
-              title: const Text('Eksport sebagai TXT'),
+              title: const Text('Export as TXT'),
               onTap: () => Navigator.pop(ctx, 'txt'),
             ),
           ],
@@ -289,20 +289,20 @@ class _ListPaneState extends ConsumerState<_ListPane> {
         mimeType: pick == 'json' ? 'application/json' : 'text/plain',
       );
       if (uri != null && context.mounted) {
-        showAppSnackBar(context, 'Log dieksport ke $uri', success: true);
+        showAppSnackBar(context, 'Log exported to $uri', success: true);
       }
     } catch (_) {
-      if (context.mounted) showAppSnackBar(context, 'Eksport dibatalkan.', error: true);
+      if (context.mounted) showAppSnackBar(context, 'Export cancelled.', error: true);
     }
   }
 
   Future<void> _clearLog(BuildContext context, WidgetRef ref) async {
     final ok = await confirmDialog(
       context,
-      title: 'Kosongkan log?',
-      message: 'Semua entri respons dalam memori akan dibuang. '
-          'Ralat kekal disimpan dalam skrin Sejarah & Gagal.',
-      confirmLabel: 'Kosongkan',
+      title: 'Clear the log?',
+      message: 'All in-memory response entries will be discarded. '
+          'Persistent errors remain in the History & Failed screens.',
+      confirmLabel: 'Clear',
     );
     if (ok) {
       ref.read(responseLogProvider.notifier).clear();
@@ -321,14 +321,14 @@ class _SummaryRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Expanded(child: _SummaryCell(label: 'Permintaan', value: '${summary.total}')),
-        Expanded(child: _SummaryCell(label: 'Berjaya', value: '${summary.success}', color: AppColors.success)),
-        Expanded(child: _SummaryCell(label: 'Gagal', value: '${summary.failed}', color: AppColors.danger)),
-        Expanded(child: _SummaryCell(label: 'Purata', value: formatMs(summary.avgLatencyMs), color: AppColors.info)),
+        Expanded(child: _SummaryCell(label: 'Requests', value: '${summary.total}')),
+        Expanded(child: _SummaryCell(label: 'Succeeded', value: '${summary.success}', color: AppColors.success)),
+        Expanded(child: _SummaryCell(label: 'Failed', value: '${summary.failed}', color: AppColors.danger)),
+        Expanded(child: _SummaryCell(label: 'Average', value: formatMs(summary.avgLatencyMs), color: AppColors.info)),
         Expanded(
           child: _SummaryCell(
             label: 'Rate Limit',
-            value: summary.rateLimitedNow ? 'AKTIF' : 'OK',
+            value: summary.rateLimitedNow ? 'ACTIVE' : 'OK',
             color: summary.rateLimitedNow ? AppColors.warning : AppColors.success,
           ),
         ),
@@ -483,8 +483,8 @@ class ResponseCard extends StatelessWidget {
             Expanded(
               child: Text(
                 entry.batchNumber == 0
-                    ? 'Uji Sambungan / Info'
-                    : 'Batch ${entry.batchNumber}/${entry.totalBatches} • ${entry.fileCount} fail',
+                    ? 'Test Connection / Info'
+                    : 'Batch ${entry.batchNumber}/${entry.totalBatches} • ${entry.fileCount} files',
                 style: Theme.of(context).textTheme.titleSmall,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -517,7 +517,7 @@ class ResponseCard extends StatelessWidget {
               if (entry.uploadBytes > 0 && entry.latencyMs > 0)
                 _Meta(icon: LucideIcons.zap, text: formatSpeed(entry.speedMBps)),
               if (entry.attempt > 1)
-                _Meta(icon: LucideIcons.rotateCcw, text: 'cubaan ${entry.attempt}'),
+                _Meta(icon: LucideIcons.rotateCcw, text: 'attempt ${entry.attempt}'),
               _Meta(icon: LucideIcons.clock, text: formatClock(entry.timestamp)),
             ],
           ),
@@ -629,8 +629,8 @@ class _DetailPane extends ConsumerWidget {
     if (selected == null) {
       return const EmptyState(
         icon: LucideIcons.inbox,
-        title: 'Belum ada respons',
-        subtitle: 'Hantar sesuatu untuk lihat respons Discord di sini.',
+        title: 'No responses yet',
+        subtitle: 'Send something to see Discord responses here.',
       );
     }
     return ResponseDetailView(entry: selected);

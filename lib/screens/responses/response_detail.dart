@@ -48,9 +48,9 @@ class ResponseDetailView extends ConsumerWidget {
         const SizedBox(height: 6),
         Text(
           entry.batchNumber == 0
-              ? 'Permintaan ujian/infomasional'
-              : 'Batch ${entry.batchNumber}/${entry.totalBatches} • ${entry.fileCount} fail • '
-                  'cubaan ke-${entry.attempt}',
+              ? 'Test/info request'
+              : 'Batch ${entry.batchNumber}/${entry.totalBatches} • ${entry.fileCount} files • '
+                  'attempt ${entry.attempt}',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -59,7 +59,7 @@ class ResponseDetailView extends ConsumerWidget {
 
         // Endpoint + kaedah (sentiasa ditapis)
         _SectionCard(
-          title: 'PERMINTAAN',
+          title: 'REQUEST',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -102,7 +102,7 @@ class ResponseDetailView extends ConsumerWidget {
                   Icon(LucideIcons.shieldCheck, size: 13, color: AppColors.success),
                   const SizedBox(width: 6),
                   Text(
-                    'Token & URL webhook ditapis secara automatik.',
+                    'Tokens & webhook URLs are sanitized automatically.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: AppColors.success,
                           fontSize: 11,
@@ -117,17 +117,17 @@ class ResponseDetailView extends ConsumerWidget {
 
         // Metrik
         _SectionCard(
-          title: 'METRIK',
+          title: 'METRICS',
           child: Wrap(
             spacing: 18,
             runSpacing: 12,
             children: [
-              _Metric(label: 'Masa respons', value: formatMs(entry.latencyMs)),
+              _Metric(label: 'Response time', value: formatMs(entry.latencyMs)),
               if (entry.uploadBytes > 0)
-                _Metric(label: 'Saiz muat naik', value: formatBytes(entry.uploadBytes)),
+                _Metric(label: 'Upload size', value: formatBytes(entry.uploadBytes)),
               if (entry.uploadBytes > 0 && entry.latencyMs > 0)
-                _Metric(label: 'Kelajuan', value: formatSpeed(entry.speedMBps)),
-              _Metric(label: 'Masa permintaan', value: formatClock(entry.timestamp)),
+                _Metric(label: 'Speed', value: formatSpeed(entry.speedMBps)),
+              _Metric(label: 'Request time', value: formatClock(entry.timestamp)),
             ],
           ),
         ),
@@ -166,7 +166,7 @@ class ResponseDetailView extends ConsumerWidget {
         // Ralat + penerangan BM
         if (entry.status.isError || entry.explanation != null) ...[
           _SectionCard(
-            title: 'RALAT & PENYELESAIAN',
+            title: 'ERROR & RESOLUTION',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -177,7 +177,7 @@ class ResponseDetailView extends ConsumerWidget {
                 if (entry.errorMessage != null) ...[
                   const SizedBox(height: 8),
                   Text(
-                    'Mesej asal: ${entry.errorMessage}',
+                    'Original message: ${entry.errorMessage}',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
@@ -218,18 +218,18 @@ class ResponseDetailView extends ConsumerWidget {
             OutlinedButton.icon(
               onPressed: () => _copyJson(context),
               icon: const Icon(LucideIcons.copy, size: 15),
-              label: const Text('Salin JSON'),
+              label: const Text('Copy JSON'),
             ),
             OutlinedButton.icon(
               onPressed: () => _copyCurl(context),
               icon: const Icon(LucideIcons.terminal, size: 15),
-              label: const Text('Salin cURL'),
+              label: const Text('Copy cURL'),
             ),
             if (entry.status.isError) ...[
               FilledButton.icon(
                 onPressed: () => _retryBatch(context, ref),
                 icon: const Icon(LucideIcons.rotateCcw, size: 15),
-                label: const Text('Cuba Semula Batch Ini'),
+                label: const Text('Retry This Batch'),
               ),
             ],
           ],
@@ -245,7 +245,7 @@ class ResponseDetailView extends ConsumerWidget {
     );
     Clipboard.setData(ClipboardData(text: text));
     HapticFeedback.selectionClick();
-    showAppSnackBar(context, 'JSON (ditapis) disalin ke papan keratan.', success: true);
+    showAppSnackBar(context, 'JSON (sanitized) copied to clipboard.', success: true);
   }
 
   void _copyCurl(BuildContext context) {
@@ -256,7 +256,7 @@ class ResponseDetailView extends ConsumerWidget {
     );
     Clipboard.setData(ClipboardData(text: curl));
     HapticFeedback.selectionClick();
-    showAppSnackBar(context, 'cURL (ditapis) disalin ke papan keratan.', success: true);
+    showAppSnackBar(context, 'cURL (sanitized) copied to clipboard.', success: true);
   }
 
   Future<void> _retryBatch(BuildContext context, WidgetRef ref) async {
@@ -267,7 +267,7 @@ class ResponseDetailView extends ConsumerWidget {
       final name = i < entry.fileNames.length ? entry.fileNames[i] : path.split('/').last;
       final f = File(path);
       if (!f.existsSync()) {
-        showAppSnackBar(context, 'Fail $name tidak dijumpai lagi pada peranti.', error: true);
+        showAppSnackBar(context, 'File $name no longer exists on the device.', error: true);
         return;
       }
       final isVideo = MediaCatalog.isVideo(name);
@@ -286,7 +286,7 @@ class ResponseDetailView extends ConsumerWidget {
     final config = ref.read(configProvider);
     final result = await upload.start(items: items, config: config, caption: '');
     if (context.mounted && result != null) {
-      showAppSnackBar(context, result, success: !result.startsWith('Gagal'));
+      showAppSnackBar(context, result, success: !result.startsWith('Failed'));
     }
   }
 }

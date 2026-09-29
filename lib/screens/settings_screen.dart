@@ -40,15 +40,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final settings = ref.watch(settingsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Tetapan')),
+      appBar: AppBar(title: const Text('Settings')),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: AppBreakpoints.maxContentWidth),
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // Paparan
-              const SectionLabel('Paparan'),
+              // Display
+              const SectionLabel('Display'),
               AppCard(
                 child: Padding(
                   padding: const EdgeInsets.all(14),
@@ -57,13 +57,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     children: [
                       _SettingRow(
                         icon: LucideIcons.eyeOff,
-                        title: 'Tema',
-                        subtitle: 'Mod gelap ialah lalai',
+                        title: 'Theme',
+                        subtitle: 'Dark mode is the default',
                         trailing: SegmentedButton<AppThemeMode>(
                           segments: const [
-                            ButtonSegment(value: AppThemeMode.dark, label: Text('Gelap')),
-                            ButtonSegment(value: AppThemeMode.light, label: Text('Terahang')),
-                            ButtonSegment(value: AppThemeMode.system, label: Text('Sistem')),
+                            ButtonSegment(value: AppThemeMode.dark, label: Text('Dark')),
+                            ButtonSegment(value: AppThemeMode.light, label: Text('Light')),
+                            ButtonSegment(value: AppThemeMode.system, label: Text('System')),
                           ],
                           selected: {settings.themeMode},
                           onSelectionChanged: (s) =>
@@ -73,12 +73,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       const Divider(height: 24),
                       _SettingRow(
                         icon: LucideIcons.smartphone,
-                        title: 'Orientasi',
-                        subtitle: 'Auto mengikut sensor (disyorkan)',
+                        title: 'Orientation',
+                        subtitle: 'Follow the sensor automatically (recommended)',
                         trailing: SegmentedButton<OrientationSetting>(
                           segments: const [
                             ButtonSegment(value: OrientationSetting.auto, label: Text('Auto')),
-                            ButtonSegment(value: OrientationSetting.portrait, label: Text('Potret')),
+                            ButtonSegment(value: OrientationSetting.portrait, label: Text('Portrait')),
                             ButtonSegment(value: OrientationSetting.landscape, label: Text('Landscape')),
                           ],
                           selected: {settings.orientation},
@@ -92,25 +92,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 20),
 
-              // Notifikasi
-              const SectionLabel('Notifikasi'),
+              // Notifications
+              const SectionLabel('Notifications'),
               AppCard(
                 child: ListTile(
                   leading: const Icon(LucideIcons.info),
-                  title: const Text('Kebenaran notifikasi'),
+                  title: const Text('Notification permission'),
                   subtitle: Text(
                     _notifGranted == null
-                        ? 'Menyemak...'
+                        ? 'Checking...'
                         : (_notifGranted!
-                            ? 'Dibenarkan — progres hantaran dipaparkan'
-                            : 'Tidak dibenarkan — hantaran tetap berjalan tanpa notifikasi'),
+                            ? 'Granted — send progress is displayed'
+                            : 'Not granted — sending still runs without notifications'),
                   ),
                   trailing: FilledButton.tonal(
                     onPressed: () async {
                       final s = await Permission.notification.request();
                       setState(() => _notifGranted = s.isGranted);
                     },
-                    child: const Text('Benarkan'),
+                    child: const Text('Allow'),
                   ),
                 ),
               ),
@@ -123,30 +123,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   children: [
                     ListTile(
                       leading: const Icon(LucideIcons.terminal),
-                      title: const Text('Kosongkan log respons'),
-                      subtitle: const Text('Buang semua entri respons dalam memori'),
+                      title: const Text('Clear response log'),
+                      subtitle: const Text('Discard all in-memory response entries'),
                       onTap: () {
                         ref.read(responseLogProvider.notifier).clear();
-                        showAppSnackBar(context, 'Log respons dikosongkan.');
+                        showAppSnackBar(context, 'Response log cleared.');
                       },
                     ),
                     const Divider(height: 1),
                     ListTile(
                       leading: const Icon(LucideIcons.trash2, color: AppColors.danger),
-                      title: const Text('Kosongkan sejarah & gagal',
+                      title: const Text('Clear history & failures',
                           style: TextStyle(color: AppColors.danger)),
-                      subtitle: const Text('Padam semua rekod sesi dan kegagalan'),
+                      subtitle: const Text('Delete all session and failure records'),
                       onTap: () async {
                         final ok = await confirmDialog(
                           context,
-                          title: 'Padam semua rekod?',
-                          message: 'Sejarah dan rekod gagal akan dipadam secara kekal.',
+                          title: 'Delete all records?',
+                          message: 'History and failure records will be permanently deleted.',
                         );
                         if (ok) {
                           await ref.read(historyProvider.notifier).clearAll();
                           await ref.read(failedProvider.notifier).clearAll();
                           if (context.mounted) {
-                            showAppSnackBar(context, 'Semua rekod dipadam.');
+                            showAppSnackBar(context, 'All records deleted.');
                           }
                         }
                       },
@@ -157,12 +157,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(height: 20),
 
               // Panduan
-              const SectionLabel('Panduan'),
+              const SectionLabel('Guide'),
               AppCard(
                 child: ListTile(
                   leading: const Icon(LucideIcons.keyboard),
-                  title: const Text('Papar panduan permulaan'),
-                  subtitle: const Text('Cara dapat webhook, token bot & pilih folder'),
+                  title: const Text('Show the getting-started guide'),
+                  subtitle: const Text('How to get a webhook, bot token & pick a folder'),
                   onTap: () {
                     ref.read(settingsProvider.notifier).resetOnboarding();
                     Navigator.of(context).push(MaterialPageRoute<void>(
@@ -174,7 +174,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(height: 20),
 
               // Tentang
-              const SectionLabel('Tentang'),
+              const SectionLabel('About'),
               AppCard(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -205,7 +205,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           Icon(LucideIcons.shieldCheck, size: 14, color: AppColors.success),
                           const SizedBox(width: 6),
                           Text(
-                            'Token disimpan dalam stor selamat • Tiada telemetri',
+                            'Token stored in secure storage • No telemetry',
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                   color: AppColors.success,
                                 ),

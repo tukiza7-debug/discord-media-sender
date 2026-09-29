@@ -72,8 +72,8 @@ class MediaListNotifier extends StateNotifier<List<MediaItem>> {
     if (res.skipped.isEmpty) return null;
     if (res.skipped.length <= 3) return res.skipped.join('\n');
     final lagi = res.skipped.length - 3;
-    return '${res.skipped.length} fail dilangkau:\n'
-        '${res.skipped.take(3).join('\n')}\n… dan $lagi lagi';
+    return '${res.skipped.length} files skipped:\n'
+        '${res.skipped.take(3).join('\n')}\n… and $lagi more';
   }
 }
 

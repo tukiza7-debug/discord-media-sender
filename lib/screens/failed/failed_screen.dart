@@ -42,9 +42,9 @@ class _FailedScreenState extends ConsumerState<FailedScreen> {
                 SizedBox(height: 120),
                 EmptyState(
                   icon: LucideIcons.alertTriangle,
-                  title: 'Tiada kegagalan',
+                  title: 'No failures',
                   subtitle:
-                      'Fail atau batch yang gagal selepas 3 cubaan automatik akan dipaparkan di sini dengan sebab penuh.',
+                      'Files or batches that fail after 3 automatic attempts will appear here with the full reason.',
                 ),
               ],
             )
@@ -58,16 +58,16 @@ class _FailedScreenState extends ConsumerState<FailedScreen> {
     final appBar = wide
         ? null
         : AppBar(
-            title: const Text('Gagal'),
+            title: const Text('Failed'),
             actions: [
               if (failures.isNotEmpty) ...[
                 IconButton(
-                  tooltip: 'Cuba Semula Semua',
+                  tooltip: 'Retry All',
                   icon: const Icon(LucideIcons.rotateCcw, size: 19),
                   onPressed: () => _retryAll(context),
                 ),
                 IconButton(
-                  tooltip: 'Padam Semua',
+                  tooltip: 'Delete All',
                   icon: const Icon(LucideIcons.trash2, size: 19, color: AppColors.danger),
                   onPressed: () => _clearAll(context),
                 ),
@@ -83,16 +83,16 @@ class _FailedScreenState extends ConsumerState<FailedScreen> {
       }
       return Scaffold(
         appBar: AppBar(
-          title: const Text('Gagal'),
+          title: const Text('Failed'),
           actions: [
             if (failures.isNotEmpty) ...[
               TextButton.icon(
                 onPressed: () => _retryAll(context),
                 icon: const Icon(LucideIcons.rotateCcw, size: 16),
-                label: const Text('Cuba Semula Semua'),
+                label: const Text('Retry All'),
               ),
               IconButton(
-                tooltip: 'Padam Semua',
+                tooltip: 'Delete All',
                 icon: const Icon(LucideIcons.trash2, size: 19, color: AppColors.danger),
                 onPressed: () => _clearAll(context),
               ),
@@ -109,8 +109,8 @@ class _FailedScreenState extends ConsumerState<FailedScreen> {
                 child: selected == null
                     ? const EmptyState(
                         icon: LucideIcons.alertTriangle,
-                        title: 'Pilih kegagalan',
-                        subtitle: 'Pilih satu entri untuk lihat kod HTTP, mesej dan tindakan.',
+                        title: 'Pick a failure',
+                        subtitle: 'Pick an entry to view the HTTP code, message and actions.',
                       )
                     : _FailedDetail(record: selected, onRetry: () => _retryOne(context, selected!)),
               ),
@@ -137,7 +137,7 @@ class _FailedScreenState extends ConsumerState<FailedScreen> {
     final config = ref.read(configProvider);
     final result = await upload.start(items: items, config: config, caption: '');
     if (context.mounted && result != null) {
-      showAppSnackBar(context, result, success: !result.startsWith('Gagal'));
+      showAppSnackBar(context, result, success: !result.startsWith('Failed'));
     }
     ref.read(failedProvider.notifier).load();
   }
@@ -145,12 +145,12 @@ class _FailedScreenState extends ConsumerState<FailedScreen> {
   Future<void> _clearAll(BuildContext context) async {
     final ok = await confirmDialog(
       context,
-      title: 'Padam semua rekod gagal?',
-      message: 'Semua entri kegagalan akan dibuang. Fail pada peranti tidak disentuh.',
+      title: 'Delete all failure records?',
+      message: 'All failure entries will be removed. Files on your device are not touched.',
     );
     if (ok) {
       ref.read(failedProvider.notifier).clearAll();
-      if (context.mounted) showAppSnackBar(context, 'Rekod gagal dikosongkan.');
+      if (context.mounted) showAppSnackBar(context, 'Failure records cleared.');
     }
   }
 }
@@ -207,7 +207,7 @@ class _FailedCard extends ConsumerWidget {
                     const SizedBox(width: 8),
                     // Chip kod HTTP (merah rangkaian/5xx, kuning 4xx)
                     SoftBadge(
-                      record.httpCode?.toString() ?? 'RANGKAIAN',
+                      record.httpCode?.toString() ?? 'NETWORK',
                       color: color,
                     ),
                   ],
@@ -243,7 +243,7 @@ class _FailedCard extends ConsumerWidget {
                         ),
                         onPressed: () => _retryOne(context, ref, record),
                         icon: const Icon(LucideIcons.rotateCcw, size: 14),
-                        label: const Text('Cuba Semula'),
+                        label: const Text('Retry'),
                       ),
                   ],
                 ),
@@ -260,7 +260,7 @@ class _FailedCard extends ConsumerWidget {
     final config = ref.read(configProvider);
     final result = await upload.start(items: [f.toMediaItem()], config: config, caption: '');
     if (context.mounted && result != null) {
-      showAppSnackBar(context, result, success: !result.startsWith('Gagal'));
+      showAppSnackBar(context, result, success: !result.startsWith('Failed'));
     }
     ref.read(failedProvider.notifier).load();
   }
@@ -285,10 +285,10 @@ class _FailedDetail extends StatelessWidget {
                 Text(record.fileName, style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 10),
                 Text(
-                  'Kod HTTP: ${record.httpCode?.toString() ?? 'Tiada (ralat rangkaian)'}\n'
+                  'HTTP code: ${record.httpCode?.toString() ?? 'None (network error)'}\n'
                   'Batch: ${record.batchIndex}\n'
-                  'Masa: ${formatDateTime(record.createdAt)}\n'
-                  'Mod: ${record.mode == 'bot' ? 'Bot' : 'Webhook'} • Sasaran: ${record.target}',
+                  'Time: ${formatDateTime(record.createdAt)}\n'
+                  'Mode: ${record.mode == 'bot' ? 'Bot' : 'Webhook'} • Target: ${record.target}',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                         height: 1.7,
@@ -307,7 +307,7 @@ class _FailedDetail extends StatelessWidget {
         FilledButton.icon(
           onPressed: onRetry,
           icon: const Icon(LucideIcons.rotateCcw, size: 17),
-          label: const Text('Cuba Semula Fail Ini'),
+          label: const Text('Retry This File'),
         ),
       ],
     );

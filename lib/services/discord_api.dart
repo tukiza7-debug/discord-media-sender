@@ -129,7 +129,7 @@ class DiscordApi {
             statusCode: null,
             e: e,
             elapsedMs: sw.elapsedMilliseconds,
-            explanationOverride: 'Permintaan dibatalkan oleh pengguna.',
+            explanationOverride: 'Request cancelled by the user.',
           ));
           return const BatchOutcome(success: false, cancelled: true);
         }
@@ -252,11 +252,11 @@ class DiscordApi {
         responseJson: Security.sanitizeJson(resp.data),
       ));
       return TestResult(
-          ok: true, message: name.isEmpty ? 'Webhook sah' : 'Webhook sah: $name');
+          ok: true, message: name.isEmpty ? 'Webhook valid' : 'Webhook valid: $name');
     } on DioException catch (e) {
       return _testError(e, 'Webhook');
     } catch (e) {
-      return TestResult(ok: false, message: 'Sambungan gagal: $e');
+      return TestResult(ok: false, message: 'Connection failed: $e');
     }
   }
 
@@ -291,11 +291,11 @@ class DiscordApi {
         timestamp: DateTime.now(),
         responseJson: {'bot': botName, 'channel': chName},
       ));
-      return TestResult(ok: true, message: 'Bot sah: $botName • Channel: #$chName');
+      return TestResult(ok: true, message: 'Bot valid: $botName • Channel: #$chName');
     } on DioException catch (e) {
       return _testError(e, 'Bot');
     } catch (e) {
-      return TestResult(ok: false, message: 'Sambungan gagal: $e');
+      return TestResult(ok: false, message: 'Connection failed: $e');
     }
   }
 
@@ -311,7 +311,7 @@ class DiscordApi {
       fileCount: 0,
       fileNames: const [],
       filePaths: const [],
-      endpoint: kind == 'Webhook' ? 'webhooks/**** (uji sambungan)' : 'discord.com/api/v10/... (uji sambungan)',
+      endpoint: kind == 'Webhook' ? 'webhooks/**** (connection test)' : 'discord.com/api/v10/... (connection test)',
       method: 'GET',
       status: code != null && code >= 500
           ? LogStatus.serverError
@@ -455,7 +455,7 @@ class DiscordApi {
     final body = e.response?.data;
     final dCode = _discordErrorCode(body);
     final expl = ErrorTranslator.explain(statusCode: code, discordCode: dCode, error: e);
-    final msg = e.message ?? e.error?.toString() ?? 'Ralat tidak diketahui';
+    final msg = e.message ?? e.error?.toString() ?? 'Unknown error';
     return ResponseLogEntry(
       id: _entryId(),
       batchNumber: batchNumber,
@@ -477,21 +477,21 @@ class DiscordApi {
       responseJson: Security.sanitizeJson(body is Map ? body : null),
       errorMessage: msg,
       explanation: explanationOverride ??
-          '${expl.title} — ${expl.detail}${dCode != null ? ' (kod Discord: $dCode)' : ''}',
+          '${expl.title} — ${expl.detail}${dCode != null ? ' (Discord code: $dCode)' : ''}',
       retryAfterMs: retryAfterMs,
     );
   }
 
   /// Status ringkas untuk paparan luar.
   static String describeStatusCode(int? code) {
-    if (code == null) return 'RANGKAIAN';
-    if (code >= 200 && code < 300) return 'BERJAYA';
+    if (code == null) return 'NETWORK';
+    if (code >= 200 && code < 300) return 'SUCCESS';
     if (code == 429) return 'RATE LIMIT';
-    return 'RALAT';
+    return 'ERROR';
   }
 
   static String humanBatch(int n, int total, int files) =>
-      'Batch $n/$total • $files fail';
+      'Batch $n/$total • $files files';
 }
 
 /// Bungkusan jsonEncode yang selamat untuk badan kecil.

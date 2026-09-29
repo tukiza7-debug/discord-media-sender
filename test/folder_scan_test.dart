@@ -82,7 +82,7 @@ void main() {
       final res =
           await MediaService.instance.scanFolder(p.join(tempRoot.path, 'tak_ada'));
       expect(res.items, isEmpty);
-      expect(res.info, 'Folder tidak dijumpai');
+      expect(res.info, 'Folder not found');
     });
 
     test('folder kosong tiada item & tiada ralat', () async {

@@ -22,11 +22,11 @@ class RootShell extends ConsumerWidget {
   const RootShell({super.key});
 
   static const _destinations = [
-    (icon: LucideIcons.send, label: 'Hantar'),
-    (icon: LucideIcons.messageSquare, label: 'Respons'),
-    (icon: LucideIcons.history, label: 'Sejarah'),
-    (icon: LucideIcons.alertTriangle, label: 'Gagal'),
-    (icon: LucideIcons.settings, label: 'Tetapan'),
+    (icon: LucideIcons.send, label: 'Send'),
+    (icon: LucideIcons.messageSquare, label: 'Responses'),
+    (icon: LucideIcons.history, label: 'History'),
+    (icon: LucideIcons.alertTriangle, label: 'Failed'),
+    (icon: LucideIcons.settings, label: 'Settings'),
   ];
 
   @override

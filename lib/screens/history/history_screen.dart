@@ -47,9 +47,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 SizedBox(height: 120),
                 EmptyState(
                   icon: LucideIcons.history,
-                  title: 'Tiada sejarah lagi',
+                  title: 'No history yet',
                   subtitle:
-                      'Setiap sesi hantaran akan direkodkan di sini — tarikh, mod, jumlah fail dan status.',
+                      'Every sending session will be recorded here — date, mode, file count and status.',
                 ),
               ],
             )
@@ -100,9 +100,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 child: selected == null
                     ? const EmptyState(
                         icon: LucideIcons.history,
-                        title: 'Pilih sesi',
+                        title: 'Pick a session',
                         subtitle:
-                            'Pilih satu sesi untuk lihat butiran dan tindakan cuba semula.',
+                            'Pick a session to view details and retry actions.',
                       )
                     : _SessionDetail(record: selected),
               ),
@@ -113,7 +113,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Sejarah')),
+      appBar: AppBar(title: const Text('History')),
       body: listPane,
     );
   }
@@ -124,7 +124,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     if (MediaQuery.sizeOf(context).width < AppBreakpoints.compact) {
       Navigator.of(context).push(MaterialPageRoute<void>(
         builder: (_) => Scaffold(
-          appBar: AppBar(title: const Text('Butiran Sesi')),
+          appBar: AppBar(title: const Text('Session Details')),
           body: SafeArea(child: _SessionDetail(record: s)),
         ),
       ));
@@ -161,8 +161,8 @@ class _SessionCard extends ConsumerWidget {
       confirmDismiss: (_) async {
         return await confirmDialog(
           context,
-          title: 'Padam sesi ini?',
-          message: 'Rekod sesi dan kegagalan berkaitan akan dipadam.',
+          title: 'Delete this session?',
+          message: 'The session record and its related failures will be deleted.',
         );
       },
       onDismissed: (_) {
@@ -203,11 +203,11 @@ class _SessionCard extends ConsumerWidget {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    _Count(label: 'Fail', value: '${record.totalFiles}'),
+                    _Count(label: 'Files', value: '${record.totalFiles}'),
                     const SizedBox(width: 16),
-                    _Count(label: 'Berjaya', value: '${record.successCount}', color: AppColors.success),
+                    _Count(label: 'Succeeded', value: '${record.successCount}', color: AppColors.success),
                     const SizedBox(width: 16),
-                    _Count(label: 'Gagal', value: '${record.failedCount}', color: AppColors.danger),
+                    _Count(label: 'Failed', value: '${record.failedCount}', color: AppColors.danger),
                   ],
                 ),
               ],
@@ -220,14 +220,14 @@ class _SessionCard extends ConsumerWidget {
 
   (Color, String) _statusColor(String status) {
     switch (status) {
-      case 'selesai':
-        return (AppColors.success, 'Berjaya');
-      case 'separa':
-        return (AppColors.warning, 'Separa');
-      case 'gagal':
-        return (AppColors.danger, 'Gagal');
-      case 'dibatalkan':
-        return (AppColors.textFaint, 'Dibatalkan');
+      case 'completed':
+        return (AppColors.success, 'Success');
+      case 'partial':
+        return (AppColors.warning, 'Partial');
+      case 'failed':
+        return (AppColors.danger, 'Failed');
+      case 'cancelled':
+        return (AppColors.textFaint, 'Cancelled');
       default:
         return (AppColors.info, status);
     }
@@ -283,13 +283,13 @@ class _SessionDetail extends ConsumerWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Sesi #${record.id ?? '-'}',
+                          Text('Session #${record.id ?? '-'}',
                               style: Theme.of(context).textTheme.titleMedium),
                           const SizedBox(height: 6),
                           Text(
                             '${formatDateTime(record.startedAt)}\n'
-                            'Mod: ${record.mode == 'bot' ? 'Bot' : 'Webhook'} • Sasaran: ${record.target}\n'
-                            '${record.totalFiles} fail • ${record.successCount} berjaya • ${record.failedCount} gagal',
+                            'Mode: ${record.mode == 'bot' ? 'Bot' : 'Webhook'} • Target: ${record.target}\n'
+                            '${record.totalFiles} files • ${record.successCount} succeeded • ${record.failedCount} failed',
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                                   height: 1.6,
@@ -300,11 +300,11 @@ class _SessionDetail extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SectionLabel('Fail Gagal (${failures.length})'),
+                  SectionLabel('Failed Files (${failures.length})'),
                   if (failures.isEmpty)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 12),
-                      child: Text('Tiada kegagalan direkod untuk sesi ini.'),
+                      child: Text('No failures recorded for this session.'),
                     )
                   else
                     for (final f in failures) _FailureRow(record: f),
@@ -318,7 +318,7 @@ class _SessionDetail extends ConsumerWidget {
                   width: double.infinity,
                   child: FilledButton.icon(
                     icon: const Icon(LucideIcons.rotateCcw, size: 17),
-                    label: Text('Cuba Semula Sesi (${failures.length} fail)'),
+                    label: Text('Retry Session (${failures.length} files)'),
                     onPressed: () => _retrySession(context, ref, failures),
                   ),
                 ),
@@ -336,7 +336,7 @@ class _SessionDetail extends ConsumerWidget {
     final config = ref.read(configProvider);
     final result = await upload.start(items: items, config: config, caption: '');
     if (context.mounted && result != null) {
-      showAppSnackBar(context, result, success: !result.startsWith('Gagal'));
+      showAppSnackBar(context, result, success: !result.startsWith('Failed'));
     }
     ref.read(failedProvider.notifier).load();
   }

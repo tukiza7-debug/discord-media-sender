@@ -120,6 +120,28 @@ jobs:
           sha256sum *.apk > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
+      - name: Rekod audit tandatangan & versi (SIGNING.txt)
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+          AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1)
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          {
+            echo "Discord Media Sender v${V} - Audit Tandatangan & Versi"
+            echo "Dijana: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            echo
+            echo "== Sijil tandatangan (apksigner verify --print-certs) =="
+            "$APKSIGNER" verify --print-certs "$APK" | grep -E 'certificate SHA-256|certificate DN' || true
+            echo
+            echo "== Versi APK (aapt2 dump badging) =="
+            "$AAPT" dump badging "$APK" | grep -E '^package:' || true
+            echo
+            echo "NOTA: SHA256 sijil mesti SAMA untuk setiap release."
+            echo "Jika sama, APK baharu boleh dipasang terus atas versi lama (tanpa uninstall)."
+            echo "Jika berbeza, Android akan menolak kemas kini dan memerlukan uninstall."
+          } > release_out/SIGNING.txt
+          cat release_out/SIGNING.txt
+
       - name: Deraf nota kemas kini (daripada CHANGELOG — TANPA 'Full Changelog')
         id: notes
         run: |

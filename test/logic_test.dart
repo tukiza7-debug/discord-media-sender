@@ -123,8 +123,8 @@ void main() {
 
     test('formatRelativeDay', () {
       final now = DateTime.now();
-      expect(formatRelativeDay(now), 'Hari Ini');
-      expect(formatRelativeDay(now.subtract(const Duration(days: 1))), 'Semalam');
+      expect(formatRelativeDay(now), 'Today');
+      expect(formatRelativeDay(now.subtract(const Duration(days: 1))), 'Yesterday');
     });
   });
 
@@ -151,25 +151,25 @@ void main() {
   });
 
   group('ErrorTranslator', () {
-    test('401 diterjemah jelas', () {
+    test('401 is translated clearly', () {
       final e = ErrorTranslator.explain(statusCode: 401);
-      expect(e.title, contains('Token tidak sah'));
+      expect(e.title, contains('Invalid token'));
       expect(e.suggestions, isNotEmpty);
     });
 
-    test('kod Discord 50001', () {
+    test('Discord code 50001', () {
       final e = ErrorTranslator.explain(statusCode: 403, discordCode: 50001);
-      expect(e.title, contains('kebenaran'));
+      expect(e.title, contains('access'));
     });
 
     test('429 rate limit', () {
       final e = ErrorTranslator.explain(statusCode: 429);
-      expect(e.title, contains('Had kadar'));
+      expect(e.title, contains('rate limit'));
     });
 
-    test('5xx pelayan', () {
+    test('5xx server', () {
       final e = ErrorTranslator.explain(statusCode: 502);
-      expect(e.title, contains('pelayan'));
+      expect(e.title, contains('server'));
     });
   });
 

@@ -10,11 +10,11 @@ extension ResponseFilterX on ResponseFilter {
   String get label {
     switch (this) {
       case ResponseFilter.all:
-        return 'Semua';
+        return 'All';
       case ResponseFilter.success:
-        return 'Berjaya';
+        return 'Success';
       case ResponseFilter.error:
-        return 'Ralat';
+        return 'Error';
       case ResponseFilter.rateLimit:
         return 'Rate Limit';
     }

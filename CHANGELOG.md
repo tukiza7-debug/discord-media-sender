@@ -1,7 +1,21 @@
-# Changelog — Discord Media Sender
+## [1.0.4] — 2026-09-29
 
-Semua kemas kini ketara setiap versi didokumenkan di sini.
-Format: `## [versi] — tarikh`. Nota release di GitHub dibina daripada fail ini.
+### Kemas Kini
+- **Language change — the entire app UI is now in English**
+  - Navigation, all screens, dialogs, snackbars, error explanations, notifications and the onboarding guide
+- **FIX — updates no longer require uninstalling the old app**
+  - Audit finding: every previous CI build was signed with a fresh, random debug key
+    (v1.0.1, v1.0.2 and v1.0.3 each had a DIFFERENT signing certificate), so Android
+    rejected every update until the old version was uninstalled
+  - Releases are now signed with a fixed release key stored securely in GitHub Secrets
+  - IMPORTANT (one time only): the old throwaway keys cannot be recovered, so please
+    uninstall the previously installed version once, then install v1.0.4
+  - From v1.0.4 onward, every future update installs directly over the previous
+    version — no more uninstall, ever
+- `SIGNING.txt` is now included in every release as proof of the signing
+  certificate SHA-256 and the APK version — if the SHA-256 is the same across
+  releases, updates install without uninstalling
+- Legacy (Malay) session status values stored by older versions are normalised on load
 
 ## [1.0.3] — 2026-09-29
 

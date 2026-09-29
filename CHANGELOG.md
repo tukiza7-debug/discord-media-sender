@@ -1,3 +1,26 @@
+## [1.0.6] — 2026-09-30
+
+### Kemas Kini
+- **FIX — The 3 automatic retry attempts now really happen**
+  - A network-level failure (no internet, connection refused, request
+    cancelled) used to crash the send engine internally after the FIRST
+    attempt, so attempts 2 and 3 never ran; the engine now survives any
+    API-layer exception and always completes the full 3 attempts per batch
+    (with the normal backoff between them)
+  - A watchdog-cancelled attempt (stall/timeout) is retried properly too
+- **FIX — Failed files now really appear in the Failed screen**
+  - Because the engine could die before reporting the batch failure, the
+    failure records were never saved and the Failed screen stayed empty;
+    now every batch that exhausts its attempts is reported and written to
+    the Failed screen immediately, even while the session is still running
+- **FIX — Bot mode authentication (HTTP 401)**
+  - The Bot-mode requests used a masked token placeholder ("Bot ****") in
+    the real Authorization header by mistake, so every Bot-mode send/test/
+    channel listing failed with 401 Unauthorized; the real token is now
+    used on the wire (masking stays in place for logs and screens)
+- New regression tests: exactly-3-attempts retry, retry-then-success,
+  exception-during-attempt retry, and network-error resilience
+
 ## [1.0.5] — 2026-09-30
 
 ### Kemas Kini

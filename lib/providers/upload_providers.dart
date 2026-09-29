@@ -158,21 +158,31 @@ class UploadController extends StateNotifier<UploadUiState> {
         caption: caption,
         onLog: (entry) => _ref.read(responseLogProvider.notifier).add(entry),
         onBatchFailed: (batch, batchIndex, httpCode, discordCode, errorMessage) async {
-          await DatabaseService.instance.addFailures([
-            for (final f in batch)
-              FailedRecord(
-                sessionId: sessionId,
-                fileName: f.name,
-                filePath: f.path,
-                sizeBytes: f.sizeBytes,
-                batchIndex: batchIndex,
-                httpCode: httpCode,
-                errorMessage: errorMessage ?? 'Unknown error',
-                mode: mode,
-                target: target,
-                createdAt: DateTime.now(),
-              ),
-          ]);
+          // Dilindungi sepenuhnya: kegagalan DB TIDAK BOLEH menamatkan
+          // sesi hantaran dan tidak boleh menjadi pengecualian tak dikendali.
+          try {
+            await DatabaseService.instance.addFailures([
+              for (final f in batch)
+                FailedRecord(
+                  sessionId: sessionId,
+                  fileName: f.name,
+                  filePath: f.path,
+                  sizeBytes: f.sizeBytes,
+                  batchIndex: batchIndex,
+                  httpCode: httpCode,
+                  errorMessage: errorMessage ?? 'Unknown error',
+                  mode: mode,
+                  target: target,
+                  createdAt: DateTime.now(),
+                ),
+            ]);
+            // Muat semula senarai Failed SEGERA — kegagalan muncul di tab
+            // Failed walaupun sesi masih berjalan (dulu: hanya semak semula
+            // selepas sesi tamat, dan jika enjin mati awal, tiada langsung).
+            try {
+              _ref.read(failedProvider.notifier).load();
+            } catch (_) {}
+          } catch (_) {}
         },
         onForegroundUpdate: (batch, totalBatches, percent) {
           ForegroundManager.update(

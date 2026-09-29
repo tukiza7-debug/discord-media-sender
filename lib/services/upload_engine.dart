@@ -251,7 +251,11 @@ class UploadEngine {
     _controller!.add(_last);
 
     if (missing.isNotEmpty) {
-      onBatchFailed(missing, 0, null, null, 'File not found on device');
+      // onBatchFailed dilindungi — ralat DB/callback TIDAK BOLEH membunuh
+      // sesi (dulu: pengecualian tak dijangka menjadikan sesi zombi).
+      try {
+        onBatchFailed(missing, 0, null, null, 'File not found on device');
+      } catch (_) {}
       _push(
         failedFiles: missing.length,
         message:
@@ -342,6 +346,19 @@ class UploadEngine {
               );
             },
           );
+        } catch (apiErr) {
+          // PUNCA BUG LAMA (v1.0.5): ralat rangkaian menyebabkan
+          // DiscordApi melontar pengecualian (crash "null check" pada
+          // e.response!) — pengecualian itu keluar terus dari loop retry
+          // → cubaan ke-2/ke-3 TIDAK berlaku dan onBatchFailed tidak
+          // dipanggil → senarai Failed kekal kosong.
+          // SEKARANG: sebarang pengecualian lapisan API menjadi kegagalan
+          // SATU percubaan sahaja — retry terus berjalan seperti biasa.
+          outcome = BatchOutcome(
+            success: false,
+            cancelled: _cancelRequested,
+            errorMessage: _briefError(apiErr),
+          );
         } finally {
           watchdog.cancel();
           _attemptUploading = false;
@@ -401,8 +418,11 @@ class UploadEngine {
         uploadedBytes += batchBytes;
       } else {
         failedFiles += batch.length;
-        onBatchFailed(batch, b + 1, lastCode, lastDiscord,
-            lastMsg ?? 'Unknown error');
+        // Dilindungi: ralat penulisan rekod gagal tidak boleh mematikan enjin.
+        try {
+          onBatchFailed(batch, b + 1, lastCode, lastDiscord,
+              lastMsg ?? 'Unknown error');
+        } catch (_) {}
       }
 
       _push(

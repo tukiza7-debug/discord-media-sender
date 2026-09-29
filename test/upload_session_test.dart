@@ -13,12 +13,17 @@ class FakeDiscordApi extends DiscordApi {
   FakeDiscordApi({
     this.hangUntilCancel = false,
     this.throwError = false,
+    this.failTimes = 0,
     this.delay = Duration.zero,
   });
 
   /// Simulasi muat naik tergantung — hanya selesai bila token dibatalkan.
   final bool hangUntilCancel;
   final bool throwError;
+
+  /// N panggilan pertama gagal (outcome gagal biasa), selepas itu berjaya —
+  /// untuk menguji auto-retry 3 cubaan.
+  final int failTimes;
   final Duration delay;
   int calls = 0;
   List<CancelToken?> seenTokens = [];
@@ -38,6 +43,13 @@ class FakeDiscordApi extends DiscordApi {
     seenTokens.add(cancelToken);
     if (delay > Duration.zero) await Future<void>.delayed(delay);
     if (throwError) throw Exception('disk exploded');
+    if (calls <= failTimes) {
+      return const BatchOutcome(
+        success: false,
+        httpCode: 502,
+        errorMessage: 'Server exploded',
+      );
+    }
     if (hangUntilCancel) {
       onProgress?.call(10, 100);
       await cancelToken?.whenCancel;
@@ -283,13 +295,42 @@ void main() {
     expect(engine.isBusy, isFalse);
   });
 
-  test('ralat tidak dijangka → status failed (run tidak melempar)',
+  test('ralat tidak dijangka → kegagalan batch dilaporkan (run tidak melempar)',
       () async {
     final f1 = await _tempFile('i.png');
     final api = FakeDiscordApi(throwError: true);
     final engine = UploadEngine(
       api: api,
       maxRetries: 1,
+      backoffSeconds: const [0, 0, 0],
+      watchdogTick: const Duration(milliseconds: 20),
+    );
+
+    final failedBatches = <(List<MediaItem>, String?)>[];
+    final status = await engine.run(
+      items: [_item(f1)],
+      config: _cfg(),
+      caption: '',
+      onLog: _noopLog,
+      onBatchFailed: (b, i, h, d, m) => failedBatches.add((b, m)),
+    );
+
+    expect(status, 'failed');
+    expect(engine.isBusy, isFalse);
+    // BAHARU: pengecualian API menjadi kegagalan batch biasa — dilaporkan
+    // supaya rekod Failed ditulis (dulu: senyap, Failed kekal kosong).
+    expect(failedBatches, hasLength(1));
+    expect(failedBatches.single.$2, contains('disk exploded'));
+    expect(engine.lastProgress.failedFiles, 1);
+  });
+
+  test('auto-retry: gagal 2 kali kemudian berjaya → completed (3 cubaan)',
+      () async {
+    final f1 = await _tempFile('j.png');
+    final api = FakeDiscordApi(failTimes: 2);
+    final engine = UploadEngine(
+      api: api,
+      maxRetries: 3,
       backoffSeconds: const [0, 0, 0],
       watchdogTick: const Duration(milliseconds: 20),
     );
@@ -302,9 +343,65 @@ void main() {
       onBatchFailed: _noopBatchFailed,
     );
 
+    expect(status, 'completed');
+    expect(api.calls, 3, reason: 'mesti 3 cubaan automatik');
+    expect(engine.lastProgress.successFiles, 1);
+    expect(engine.lastProgress.failedFiles, 0);
+  });
+
+  test('auto-retry habis: API sentiasa gagal → tepat 3 cubaan, batch dilapor',
+      () async {
+    final f1 = await _tempFile('k.png');
+    final api = FakeDiscordApi(failTimes: 99);
+    final engine = UploadEngine(
+      api: api,
+      maxRetries: 3,
+      backoffSeconds: const [0, 0, 0],
+      watchdogTick: const Duration(milliseconds: 20),
+    );
+
+    final failedBatches = <(List<MediaItem>, String?)>[];
+    final status = await engine.run(
+      items: [_item(f1)],
+      config: _cfg(),
+      caption: '',
+      onLog: _noopLog,
+      onBatchFailed: (b, i, h, d, m) => failedBatches.add((b, m)),
+    );
+
     expect(status, 'failed');
-    expect(engine.isBusy, isFalse);
-    expect(engine.lastProgress.message, contains('unexpected error'));
+    expect(api.calls, 3, reason: 'tepat 3 cubaan automatik, tidak kurang');
+    expect(failedBatches, hasLength(1));
+    expect(failedBatches.single.$2, 'Server exploded');
+    expect(engine.lastProgress.failedFiles, 1);
+  });
+
+  test('API melontar pengecualian → retry tetap berjalan (regresi v1.0.5)',
+      () async {
+    final f1 = await _tempFile('l.png');
+    final api = FakeDiscordApi(throwError: true);
+    final engine = UploadEngine(
+      api: api,
+      maxRetries: 3,
+      backoffSeconds: const [0, 0, 0],
+      watchdogTick: const Duration(milliseconds: 20),
+    );
+
+    final failedBatches = <(List<MediaItem>, String?)>[];
+    final status = await engine.run(
+      items: [_item(f1)],
+      config: _cfg(),
+      caption: '',
+      onLog: _noopLog,
+      onBatchFailed: (b, i, h, d, m) => failedBatches.add((b, m)),
+    );
+
+    // PUNCA BUG LAMA: pengecualian keluar dari loop retry → hanya 1 cubaan,
+    // onBatchFailed tidak dipanggil (Failed kekal kosong).
+    expect(api.calls, 3, reason: 'retry mesti terus walaupun API melontar');
+    expect(status, 'failed');
+    expect(failedBatches, hasLength(1));
+    expect(engine.lastProgress.failedFiles, 1);
   });
 
   test('chunkItems mengikut saiz kelompok', () {

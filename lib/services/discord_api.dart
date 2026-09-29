@@ -46,6 +46,19 @@ class DiscordApi {
 
   late final Dio _dio;
 
+  /// Header Authorization sebenar untuk mod Bot.
+  /// PUNCA BUG LAMA: Security.maskBotToken() (fungsi TOPEKAN log) pernah
+  /// dipakai di sini — header menjadi "Bot ****" → Discord sentiasa 401.
+  /// Token sebenar diperlukan pada talian; topengan HANYA untuk log/paparan.
+  @visibleForTesting
+  static String botAuthHeader(String rawToken) {
+    final t = rawToken.trim();
+    if (t.isEmpty) return '';
+    // Jika pengguna tampal bersama awalan "Bot ", gunakan seperti sedia.
+    if (t.toLowerCase().startsWith('bot ')) return t;
+    return 'Bot $t';
+  }
+
   /// Hook log masa nyata (diwayar oleh enjin hantaran).
   void Function(ResponseLogEntry entry)? onLog;
 
@@ -82,7 +95,7 @@ class DiscordApi {
     var rateWaits = 0;
     while (true) {
       final headers = <String, String>{
-        if (!isWebhook) 'Authorization': Security.maskBotToken(config.botToken),
+        if (!isWebhook) 'Authorization': botAuthHeader(config.botToken),
       };
       final sw = Stopwatch()..start();
       try {
@@ -269,12 +282,12 @@ class DiscordApi {
     try {
       final me = await _dio.get<Map<String, dynamic>>(
         '${DiscordConstants.apiBase}/users/@me',
-        options: Options(headers: {'Authorization': Security.maskBotToken(token)}),
+        options: Options(headers: {'Authorization': botAuthHeader(token)}),
       );
       final botName = me.data?['username']?.toString() ?? 'Bot';
       final ch = await _dio.get<Map<String, dynamic>>(
         '${DiscordConstants.apiBase}/channels/${channelId.trim()}',
-        options: Options(headers: {'Authorization': Security.maskBotToken(token)}),
+        options: Options(headers: {'Authorization': botAuthHeader(token)}),
       );
       final chName = ch.data?['name']?.toString() ?? '';
       _emit(ResponseLogEntry(
@@ -328,7 +341,7 @@ class DiscordApi {
       speedMBps: 0,
       attempt: 1,
       timestamp: DateTime.now(),
-      rateLimitHeaders: _rateHeaders(e.response!.headers.map),
+      rateLimitHeaders: _rateHeaders(e.response?.headers.map),
       responseJson: Security.sanitizeJson(body is Map ? body : null),
       errorMessage: expl.title,
       explanation: '${expl.title} — ${expl.detail}',
@@ -341,7 +354,7 @@ class DiscordApi {
   Future<List<GuildInfo>> fetchGuilds(String token) async {
     final resp = await _dio.get<List<dynamic>>(
       '${DiscordConstants.apiBase}/users/@me/guilds?with_counts=false&limit=100',
-      options: Options(headers: {'Authorization': Security.maskBotToken(token)}),
+      options: Options(headers: {'Authorization': botAuthHeader(token)}),
     );
     return (resp.data ?? [])
         .whereType<Map<String, dynamic>>()
@@ -355,7 +368,7 @@ class DiscordApi {
   Future<List<ChannelInfo>> fetchTextChannels(String token, String guildId) async {
     final resp = await _dio.get<List<dynamic>>(
       '${DiscordConstants.apiBase}/guilds/$guildId/channels',
-      options: Options(headers: {'Authorization': Security.maskBotToken(token)}),
+      options: Options(headers: {'Authorization': botAuthHeader(token)}),
     );
     return (resp.data ?? [])
         .whereType<Map<String, dynamic>>()
@@ -377,7 +390,7 @@ class DiscordApi {
     final resp = await _dio.post<Map<String, dynamic>>(
       '${DiscordConstants.apiBase}/guilds/$guildId/channels',
       data: {'name': name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9-]'), '-'), 'type': 0},
-      options: Options(headers: {'Authorization': Security.maskBotToken(token)}),
+      options: Options(headers: {'Authorization': botAuthHeader(token)}),
     );
     final d = resp.data ?? const {};
     return ChannelInfo(
@@ -478,7 +491,7 @@ class DiscordApi {
       speedMBps: _speed(uploadBytes, elapsedMs),
       attempt: attempt,
       timestamp: DateTime.now(),
-      rateLimitHeaders: _rateHeaders(e.response!.headers.map),
+      rateLimitHeaders: _rateHeaders(e.response?.headers.map),
       responseJson: Security.sanitizeJson(body is Map ? body : null),
       errorMessage: msg,
       explanation: explanationOverride ??

@@ -5,7 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 class SecureStore {
   SecureStore._();
   static const _storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    aOptions: AndroidOptions(), // penyulitan kuat lalai (AES-GCM + RSA OAEP)
   );
 
   // Kunci

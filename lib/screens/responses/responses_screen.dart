@@ -283,12 +283,13 @@ class _ListPaneState extends ConsumerState<_ListPane> {
           ].join('\n'));
 
     try {
-      final path = await FilePicker.platform.saveFile(
+      final uri = await FilePicker.saveFile(
         fileName: 'dms_log_$stamp.${pick == 'json' ? 'json' : 'txt'}',
         bytes: utf8.encode(content),
+        mimeType: pick == 'json' ? 'application/json' : 'text/plain',
       );
-      if (path != null && context.mounted) {
-        showAppSnackBar(context, 'Log dieksport ke $path', success: true);
+      if (uri != null && context.mounted) {
+        showAppSnackBar(context, 'Log dieksport ke $uri', success: true);
       }
     } catch (_) {
       if (context.mounted) showAppSnackBar(context, 'Eksport dibatalkan.', error: true);

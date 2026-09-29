@@ -27,34 +27,35 @@ class MediaService {
   /// Pilih fail media (galeri/fail) melalui SAF — tiada kebenaran storan
   /// diperlukan.
   Future<MediaPickResult> pickMediaFiles() async {
-    final res = await FilePicker.platform.pickFiles(
+    final res = await FilePicker.pickFiles(
       dialogTitle: 'Pilih fail media',
       type: FileType.custom,
       allowedExtensions: MediaCatalog.allowedExtensions,
-      allowMultiple: true,
       compressionQuality: 0,
-      withData: false,
     );
-    if (res == null) return const MediaPickResult(items: []);
-    return _validate(res.files.map(_fromPlatform).toList());
+    if (res.isEmpty) return const MediaPickResult(items: []);
+    return _validate(res.map(_fromPlatform).toList());
   }
 
   /// Pilih ZIP dan ekstrak semua media di dalamnya secara automatik.
   Future<MediaPickResult> pickZip() async {
-    final res = await FilePicker.platform.pickFiles(
+    final res = await FilePicker.pickFiles(
       dialogTitle: 'Pilih fail ZIP',
       type: FileType.custom,
       allowedExtensions: const ['zip'],
-      allowMultiple: false,
-      withData: false,
     );
-    if (res == null || res.files.isEmpty) return const MediaPickResult(items: []);
-    return extractZip(res.files.first.path!);
+    if (res.isEmpty) return const MediaPickResult(items: []);
+    final f = res.first;
+    final zipPath = f.path;
+    if (zipPath == null) {
+      return const MediaPickResult(items: [], info: 'Fail ZIP tidak sah');
+    }
+    return extractZip(zipPath);
   }
 
   /// Pilih folder ('Sent Folder') dan imbas semua subfolder.
   Future<MediaPickResult> pickFolder() async {
-    final dirPath = await FilePicker.platform.getDirectoryPath(
+    final dirPath = await FilePicker.getDirectoryPath(
       dialogTitle: 'Pilih folder media',
     );
     if (dirPath == null) return const MediaPickResult(items: []);
@@ -132,7 +133,7 @@ class MediaService {
   MediaFile _fromPlatform(PlatformFile f) => MediaFile(
         path: f.path ?? '',
         name: f.name,
-        sizeBytes: f.size,
+        sizeBytes: f.lengthSync() ?? 0,
       );
 
   MediaFile _fromFile(File f) => MediaFile(

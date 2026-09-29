@@ -27,7 +27,7 @@ dependencies:
   # Pemprosesan media
   archive: ^3.6.1
   file_picker: ^8.1.7
-  video_thumbnail: ^0.5.6
+  flutter_video_thumbnail_plus: ^1.0.7
 
   # Servis latar belakang & notifikasi
   flutter_foreground_task: ^8.10.0

@@ -133,7 +133,7 @@ lib/
 
 ## Teknologi
 
-Flutter stable (Dart 3) • Material 3 • Riverpod • dio • sqflite • flutter_secure_storage • archive • file_picker (SAF — tanpa kebenaran storan) • video_thumbnail • flutter_foreground_task • google_fonts (Inter + JetBrains Mono) • lucide_icons_flutter
+Flutter stable (Dart 3) • Material 3 • Riverpod • dio • sqflite • flutter_secure_storage • archive • file_picker (SAF — tanpa kebenaran storan) • flutter_video_thumbnail_plus • flutter_foreground_task • google_fonts (Inter + JetBrains Mono) • lucide_icons_flutter
 
 ## Lesen
 

@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:flutter_video_thumbnail_plus/flutter_video_thumbnail_plus.dart';
 
 import '../core/constants.dart';
 import '../models/models.dart';
@@ -77,9 +77,9 @@ final captionProvider = StateProvider<String>((ref) => '');
 /// Thumbnail video (gambar terus FileImage).
 final videoThumbProvider =
     FutureProvider.autoDispose.family<Uint8List?, String>((ref, path) async {
-  return VideoThumbnail.thumbnailData(
+  return FlutterVideoThumbnailPlus.thumbnailData(
     video: path,
-    imageFormat: ImageFormat.JPEG,
+    imageFormat: ImageFormat.jpeg,
     quality: 55,
     maxHeight: 320,
   );

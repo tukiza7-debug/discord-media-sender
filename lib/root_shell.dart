@@ -14,6 +14,10 @@ import 'screens/failed/failed_screen.dart';
 /// Cangkang navigasi utama — adaptif:
 /// - lebar < 600dp: NavigationBar bawah, satu lajur
 /// - lebar >= 600dp: NavigationRail kiri
+///
+/// Fix paparan landscape: pada skrin landscape (lebar >= 600dp tetapi
+/// tinggi pendek ~360-430dp), rail kini boleh discrol (scroll down/up)
+/// dan beralih ke mod padat supaya ikon Tetapan sentiasa terlihat.
 class RootShell extends ConsumerWidget {
   const RootShell({super.key});
 
@@ -50,31 +54,7 @@ class RootShell extends ConsumerWidget {
             children: [
               SizedBox(
                 width: 88,
-                child: NavigationRail(
-                  selectedIndex: index,
-                  onDestinationSelected: select,
-                  labelType: NavigationRailLabelType.all,
-                  leading: Padding(
-                    padding: const EdgeInsets.only(bottom: AppSpacing.lg, top: AppSpacing.sm),
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: AppColors.blurple,
-                        borderRadius: BorderRadius.circular(AppRadius.md),
-                      ),
-                      child: const Icon(LucideIcons.send, size: 19, color: Colors.white),
-                    ),
-                  ),
-                  destinations: [
-                    for (final d in _destinations)
-                      NavigationRailDestination(
-                        icon: Icon(d.icon),
-                        selectedIcon: Icon(d.icon),
-                        label: Text(d.label),
-                      ),
-                  ],
-                ),
+                child: AppNavRail(selectedIndex: index, onSelect: select),
               ),
               const VerticalDivider(width: 1),
               Expanded(
@@ -100,5 +80,64 @@ class RootShell extends ConsumerWidget {
 
     if (wide) return Scaffold(body: body);
     return body;
+  }
+}
+
+/// Rail navigasi adaptif tinggi — membaiki paparan landscape.
+///
+/// Masalah: dengan 5 destinasi berlabel + logo, rail perlukan ~450dp
+/// tinggi; skrin landscape telefon hanya ~360-430dp → destinasi
+/// "Tetapan" di bawah terpotong dan tidak boleh dicapai (tiada skrol).
+///
+/// Penyelesaian (dua lapis):
+/// 1. `scrollable: true` — kumpulan destinasi boleh discrol ke atas/bawah
+///    apabila tinggi tidak cukup (jaminan mutlak semua boleh dicapai).
+/// 2. Mod padat pada skrin pendek (`labelType.selected`) — label hanya
+///    pada tab terpilih supaya kelima-lima destinasi muat tanpa skrol
+///    pada kebanyakan telefon landscape. Skrin tinggi kekal berlabel penuh.
+class AppNavRail extends StatelessWidget {
+  const AppNavRail({super.key, required this.selectedIndex, required this.onSelect});
+
+  final int selectedIndex;
+  final ValueChanged<int> onSelect;
+
+  /// Tinggi minimum (dp) untuk label penuh; bawahnya guna mod padat.
+  static const double _fullLabelMinHeight = 480;
+
+  @override
+  Widget build(BuildContext context) {
+    final height = MediaQuery.sizeOf(context).height;
+    final compact = height < _fullLabelMinHeight;
+
+    return NavigationRail(
+      selectedIndex: selectedIndex,
+      onDestinationSelected: onSelect,
+      // Mod padat pada skrin landscape pendek — semua destinasi muat.
+      labelType: compact
+          ? NavigationRailLabelType.selected
+          : NavigationRailLabelType.all,
+      // Kunci fix landscape: kandungan rail boleh discrol bila tak cukup tinggi.
+      scrollable: true,
+      leading: Padding(
+        padding: const EdgeInsets.only(bottom: AppSpacing.md, top: AppSpacing.xs),
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: AppColors.blurple,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+          ),
+          child: const Icon(LucideIcons.send, size: 19, color: Colors.white),
+        ),
+      ),
+      destinations: [
+        for (final d in RootShell._destinations)
+          NavigationRailDestination(
+            icon: Icon(d.icon),
+            selectedIcon: Icon(d.icon),
+            label: Text(d.label),
+          ),
+      ],
+    );
   }
 }

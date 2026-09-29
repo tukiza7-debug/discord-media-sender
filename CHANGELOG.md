@@ -3,6 +3,15 @@
 Semua kemas kini ketara setiap versi didokumenkan di sini.
 Format: `## [versi] — tarikh`. Nota release di GitHub dibina daripada fail ini.
 
+## [1.0.3] — 2026-09-29
+
+### Kemas Kini
+- FIX: paparan landscape — ikon Tetapan tidak lagi hilang
+  - Rail navigasi kiri kini boleh discrol (scroll down/up) apabila tinggi skrin tidak cukup
+  - Mod padat automatik pada skrin landscape: label hanya pada tab terpilih supaya kelima-lima menu (termasuk Tetapan) terlihat tanpa perlu skrol
+  - Skrin tinggi (potret/tablet) kekal berlabel penuh — tiada perubahan
+- 5 ujian widget baharu meliputi rail landscape (390dp, 360dp, 320dp) & potret berlabel penuh
+
 ## [1.0.2] — 2026-09-29
 
 ### Kemas Kini

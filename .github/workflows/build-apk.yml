@@ -53,25 +53,42 @@ jobs:
       - name: Ujian unit
         run: flutter test
 
+      - name: Tentukan versi APK (daripada pubspec, build number = run number)
+        id: ver
+        run: |
+          V=$(grep -E '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//' | cut -d'+' -f1 | tr -d '"')
+          if [ -z "$V" ]; then echo "Gagal baca versi pubspec.yaml"; exit 1; fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Versi APK: v$V (versionCode/build: ${{ github.run_number }})"
+
       - name: Bina APK (split per ABI)
-        run: flutter build apk --release --split-per-abi
+        run: flutter build apk --release --split-per-abi --build-name=${{ steps.ver.outputs.version }} --build-number=${{ github.run_number }}
 
       - name: Bina APK universal
-        run: flutter build apk --release
+        run: flutter build apk --release --build-name=${{ steps.ver.outputs.version }} --build-number=${{ github.run_number }}
 
-      - name: Susun nama fail APK
+      - name: Sahkan versi APK yang dibina
         run: |
+          # versionName mesti sama dengan versi pubspec — bukan nilai statik lama.
+          echo "Dibina dengan --build-name=${{ steps.ver.outputs.version }} --build-number=${{ github.run_number }}"
+          test -f build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Susun nama fail APK (mengandungi versi)
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          B="${{ github.run_number }}"
           mkdir -p apk_out
-          cp build/app/outputs/flutter-apk/app-release.apk           apk_out/DiscordMediaSender-universal.apk
-          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk apk_out/DiscordMediaSender-armeabi-v7a.apk
-          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk   apk_out/DiscordMediaSender-arm64-v8a.apk
-          cp build/app/outputs/flutter-apk/app-x86_64-release.apk      apk_out/DiscordMediaSender-x86_64.apk
+          cp build/app/outputs/flutter-apk/app-release.apk             apk_out/DiscordMediaSender-v${V}-universal.apk
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk apk_out/DiscordMediaSender-v${V}-armeabi-v7a.apk
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk   apk_out/DiscordMediaSender-v${V}-arm64-v8a.apk
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk      apk_out/DiscordMediaSender-v${V}-x86_64.apk
+          echo "Versi build (versionCode): $B" > apk_out/BUILD_INFO.txt
           ls -la apk_out
 
       - name: Muat naik artifact
         uses: actions/upload-artifact@v4
         with:
-          name: apk-release
-          path: apk_out/*.apk
+          name: apk-release-v${{ steps.ver.outputs.version }}-b${{ github.run_number }}
+          path: apk_out/*
           if-no-files-found: error
           retention-days: 30

@@ -58,6 +58,23 @@ jobs:
           echo "version=$RAW" >> "$GITHUB_OUTPUT"
           echo "Versi release: $RAW"
 
+      - name: Pastikan versi belum pernah diterbitkan (mesti berubah, jangan sama)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="v${{ steps.ver.outputs.version }}"
+          if gh release view "$V" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release $V sudah wujud. Setiap release mesti guna versi baharu — naikkan nombor versi (contoh: v1.0.0 → v1.0.1) dan push tag tersebut."
+            exit 1
+          fi
+          echo "Versi $V belum digunakan — release akan dihasilkan dengan versi ini."
+
+      - name: Selaraskan versi pubspec dengan versi release
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          sed -i -E "s/^version:.*$/version: ${V}+${{ github.run_number }}/" pubspec.yaml
+          grep -E '^version:' pubspec.yaml
+
       - name: Sediakan keystore daripada secrets (jika ada)
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}

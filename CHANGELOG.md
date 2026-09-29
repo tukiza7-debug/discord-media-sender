@@ -1,3 +1,63 @@
+## [1.0.7] — 2026-09-30
+
+### Kemas Kini
+- **FIX — Rate-limit (429) handling** — Discord's `retry_after` is seconds, not
+  milliseconds: a 1.5 s wait used to burn in 2 ms and fail the batch. The wait
+  now uses the correct unit (header `Retry-After` first), is clamped to a sane
+  range, can be CANCELLED mid-wait (no duplicate POST after cancel), and the
+  response log shows the real countdown
+- **FIX — Size limits follow Discord server tiers** — new "Max file size per
+  upload" setting (10 / 20 / 50 / 100 MB, default 20 MB) replaces the old
+  25 MB-image / 1 GB-video assumptions; batches are now capped by BOTH file
+  count (10) AND cumulative bytes, so requests can no longer exceed the server
+  limit; single files above the limit are skipped upfront instead of failing
+  with HTTP 413 after 3 pointless retries
+- **FIX — Smarter retries** — permanent errors (400/401/403/404/413 and
+  Discord codes 40005/50013/50001/10003/10015) now fail fast and are recorded
+  once; only network errors, timeouts, stalls, 5xx and 429 are retried; the
+  per-attempt timeout scales with batch size (large videos get more than
+  15 minutes)
+- **FIX — Double-tap Send no longer corrupts the session** — a synchronous
+  guard rejects the second start with NO side effects (previously it stopped
+  the foreground service and reset the UI while the first upload ran)
+- **FIX — Retry cleans up old failure records** — successful retries now
+  remove the old Failed rows; a failure that repeats updates the existing row
+  instead of adding duplicates (all in a DB transaction)
+- **NEW — Queue status tracking** — sent files are marked "Sent", failed
+  batches "Failed", and after Cancel the remaining files are "Cancelled" and
+  still resendable; per-tile badges + a "Clear sent" action; the cancel dialog
+  now describes the real behaviour
+- **FIX — App can no longer hang on the splash screen** — corrupted secure
+  storage (auto-backup restore / reinstall / keystore reset) is wiped and the
+  app boots with defaults; backup of sensitive prefs is disabled
+  (`android:allowBackup="false"`)
+- **FIX — Error explanations** — Discord code 0 no longer hides the better
+  HTTP explanation ("Invalid token"); fixed broken interpolation producing
+  "Payload too large.title - ..."; added mappings for 10015 (Unknown
+  webhook), 50027 (Invalid Webhook Token), 50035 (Invalid Form Body)
+- **FIX — Release pipeline hardening** — the Release workflow now FAILS when
+  the stable keystore secret is missing (no more per-VM debug signatures on
+  published APKs), runs flutter analyze + flutter test before publishing,
+  validates the version input against injection, and uses the correct Gradle
+  wrapper cache path; dev-build artifacts are labelled when debug-signed
+- **UI/UX fixes** — Pause during a batch no longer flips back to "Running"
+  (honest "Pausing after current batch..."), lists no longer flash "No
+  failures" while reloading, snackbars/colors now reflect the real outcome,
+  the caption survives rotation and is cleared after a completed send,
+  config fields validate inline and Send/Test stay disabled until valid,
+  test-connection logs appear in Responses before the first upload
+- **ZIP import** — extraction runs in a background isolate (no UI freeze),
+  reads from disk instead of loading the whole archive, rejects
+  path-traversal entries (`../evil.png`), de-duplicates same-named files
+  deterministically ("IMG (1).jpg"), enforces a 2 GB extracted-size safety
+  cap, reports skipped reasons, and cleans up temp folders
+- **Bot/Webhook extras** — server list paginates beyond 100 guilds,
+  announcement channels (type 5) are selectable, channel names are
+  sanitized/validated, caption mentions are disabled by default
+  (allowed_mentions), folder scans skip hidden/system dirs and explain
+  limited media access, and Settings gained "Clear saved credentials",
+  battery-optimization shortcut and the upload-size selector
+
 ## [1.0.6] — 2026-09-30
 
 ### Kemas Kini

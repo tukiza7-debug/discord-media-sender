@@ -8,6 +8,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/app_theme.dart';
 import '../../core/formatters.dart';
 import '../../models/models.dart';
+import '../../providers/config_providers.dart';
 import '../../providers/media_providers.dart';
 import '../../widgets/common.dart';
 
@@ -20,7 +21,9 @@ class MediaZone extends ConsumerWidget {
     final items = ref.watch(mediaListProvider);
     final ready = items.where((m) => m.status.canSend).length;
     final skipped = items.length - ready;
+    final sentCount = items.where((m) => m.status == MediaStatus.sent).length;
     final busy = ref.watch(mediaScanBusyProvider);
+    final maxFileMB = ref.watch(settingsProvider).maxFileMB;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -29,26 +32,43 @@ class MediaZone extends ConsumerWidget {
           'Pick Media',
           trailing: items.isEmpty
               ? null
-              : TextButton.icon(
-                  style: TextButton.styleFrom(
-                    minimumSize: const Size(48, 36),
-                    foregroundColor: AppColors.danger,
+              : Row(mainAxisSize: MainAxisSize.min, children: [
+                  // B05: 'Clear sent' — buang item yang sudah terhantar.
+                  if (sentCount > 0)
+                    TextButton.icon(
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(48, 36),
+                        foregroundColor: AppColors.success,
+                      ),
+                      onPressed: busy
+                          ? null
+                          : () {
+                              ref.read(mediaListProvider.notifier).clearSent();
+                            },
+                      icon: const Icon(LucideIcons.checkCheck, size: 14),
+                      label: Text('Clear sent ($sentCount)'),
+                    ),
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(48, 36),
+                      foregroundColor: AppColors.danger,
+                    ),
+                    onPressed: busy
+                        ? null
+                        : () async {
+                            final ok = await confirmDialog(
+                              context,
+                              title: 'Clear everything?',
+                              message:
+                                  '${items.length} files will be removed from the list.',
+                              confirmLabel: 'Clear',
+                            );
+                            if (ok) ref.read(mediaListProvider.notifier).clearAll();
+                          },
+                    icon: const Icon(LucideIcons.trash2, size: 14),
+                    label: const Text('Clear'),
                   ),
-                  onPressed: busy
-                      ? null
-                      : () async {
-                          final ok = await confirmDialog(
-                            context,
-                            title: 'Clear everything?',
-                            message:
-                                '${items.length} files will be removed from the list.',
-                            confirmLabel: 'Clear',
-                          );
-                          if (ok) ref.read(mediaListProvider.notifier).clearAll();
-                        },
-                  icon: const Icon(LucideIcons.trash2, size: 14),
-                  label: const Text('Clear'),
-                ),
+                ]),
         ),
         // Butang dilumpuhkan & dimalapkan semasa imbasan berjalan.
         AnimatedOpacity(
@@ -136,6 +156,10 @@ class MediaZone extends ConsumerWidget {
                 const SizedBox(width: 6),
                 SoftBadge('$skipped skipped', color: AppColors.warning),
               ],
+              const SizedBox(width: 6),
+              // B02: papar had aktif supaya pengguna tahu sebab fail
+              // dilangkau sebagai terlalu besar.
+              SoftBadge('Max $maxFileMB MB/file', color: AppColors.info),
             ],
           ),
         ],
@@ -148,11 +172,12 @@ class MediaZone extends ConsumerWidget {
     final notifier = ref.read(mediaListProvider.notifier);
     final busy = ref.read(mediaScanBusyProvider.notifier);
     final messenger = ScaffoldMessenger.of(context);
+    final maxFileMB = ref.read(settingsProvider).maxFileMB;
 
     busy.state = true; // the 'Scanning…' indicator appears instantly
     String? info;
     try {
-      info = await notifier.pick(action);
+      info = await notifier.pick(action, maxFileMB: maxFileMB);
     } catch (err) {
       // Never leave the UI hanging without feedback on error.
       info = 'Error while picking media: $err';
@@ -221,6 +246,13 @@ class MediaTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isProblem = !item.status.canSend;
+    // B05: lencana status per-item (Sent/Failed/Cancelled).
+    final (Color? badgeColor, String? badgeLabel) = switch (item.status) {
+      MediaStatus.sent => (AppColors.success, 'Sent'),
+      MediaStatus.failed => (AppColors.danger, 'Failed'),
+      MediaStatus.cancelled => (AppColors.info, 'Cancelled'),
+      _ => (null, null),
+    };
     return Column(
       children: [
         Expanded(
@@ -252,11 +284,29 @@ class MediaTile extends ConsumerWidget {
                     ),
                   ),
                 ),
+              // B05: lencana status di penjuru atas kiri (sent/failed/cancelled).
+              if (badgeLabel != null)
+                Positioned(
+                  top: 5,
+                  left: 5,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: badgeColor,
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: Text(
+                      badgeLabel,
+                      style: const TextStyle(
+                          fontSize: 9.5, color: Colors.white, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
               // Badge jenis video
               if (item.type == MediaType.video && !isProblem)
                 Positioned(
                   top: 5,
-                  left: 5,
+                  right: 5,
                   child: Container(
                     padding: const EdgeInsets.all(3),
                     decoration: BoxDecoration(

@@ -24,7 +24,7 @@
         android:label="Discord Media Sender"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:requestLegacyExternalStorage="true">
+        android:allowBackup="false">
         <activity
             android:name=".MainActivity"
             android:exported="true"

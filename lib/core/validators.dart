@@ -1,4 +1,9 @@
 /// Validates configuration input with clear English error messages.
+library;
+
+import '../models/models.dart';
+
+/// Validates configuration input with clear English error messages.
 class Validators {
   Validators._();
 
@@ -54,3 +59,16 @@ class Validators {
 
   static bool isWebhookUrlValid(String v) => _webhookRe.hasMatch(v.trim());
 }
+
+/// B11: konfigurasi dianggap SAH hanya bila medan aktif lulus validator
+/// (bukan sekadar tidak kosong). Digunakan untuk melumpuhkan Send/Test
+/// dan memaparkan errorText sebaris.
+bool configValid(SendConfig config) {
+  if (config.mode == SendMode.webhook) {
+    return Validators.isWebhookUrlValid(config.webhookUrl) &&
+        Validators.avatarUrl(config.avatarUrl) == null;
+  }
+  return Validators.botToken(config.botToken) == null &&
+      Validators.channelId(config.channelId) == null;
+}
+

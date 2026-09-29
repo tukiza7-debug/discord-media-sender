@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart' show ThemeMode;
@@ -47,62 +48,115 @@ extension OrientationSettingX on OrientationSetting {
         return 'Landscape';
     }
   }
-
-  List<dynamic> get allowed {
-    switch (this) {
-      case OrientationSetting.auto:
-        return <dynamic>['auto'];
-      case OrientationSetting.portrait:
-        return <dynamic>['portrait'];
-      case OrientationSetting.landscape:
-        return <dynamic>['landscape'];
-    }
-  }
 }
 
 /// Konfigurasi hantaran (disimpan dalam stor selamat).
+///
+/// B11 — pembetulan:
+/// - SETIAP medan ditulis satu demi satu (bukan tulis semula 7 medan);
+/// - tulisan DIBUANG SEKAT (debounce 400 ms) + diserikan melalui satu
+///   giliran async — ketikan pantas tidak lagi menimpa dgn nilai lama;
+/// - flush semasa dispose.
 class ConfigNotifier extends StateNotifier<SendConfig> {
   ConfigNotifier() : super(const SendConfig());
 
+  Timer? _debounce;
+  final _pending = <String>{};
+  Future<void> _queue = Future.value();
+
   Future<void> load() async {
-    final map = await SecureStore.loadConfig();
+    final map = await SecureStore.loadConfigSafe();
     state = SendConfig.fromJson(map);
   }
 
-  Future<void> _set(SendConfig next) async {
-    state = next;
-    final json = next.toJson();
-    for (final key in json.keys) {
-      await SecureStore.saveConfigField(key, json[key]?.toString() ?? '');
+  void _scheduleSave(Set<String> keys) {
+    _pending.addAll(keys);
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), _flush);
+  }
+
+  Future<void> _flush() async {
+    if (!mounted) return;
+    final keys = _pending.toList();
+    _pending.clear();
+    final json = state.toJson();
+    // Giliran async tunggu: tulisan diserikan (tiada susunan terbalik).
+    _queue = _queue.then((_) async {
+      for (final key in keys) {
+        try {
+          await SecureStore.saveConfigField(key, json[key]?.toString() ?? '');
+        } catch (_) {}
+      }
+    });
+    await _queue;
+  }
+
+  /// Paksa simpan segera (dipanggil semasa dispose).
+  Future<void> flush() async {
+    _debounce?.cancel();
+    if (_pending.isNotEmpty) {
+      await _flush();
+    } else {
+      await _queue;
     }
   }
 
-  Future<void> setMode(SendMode mode) => _set(state.copyWith(mode: mode));
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    if (_pending.isNotEmpty) {
+      // Fire-and-forget: state masih boleh dibaca sebelum shutdown.
+      unawaited(_flush());
+    }
+    super.dispose();
+  }
 
-  Future<void> setWebhookUrl(String v) => _set(state.copyWith(webhookUrl: v));
+  void _set(SendConfig next, {String? onlyKey, Set<String> keys = const {}}) {
+    state = next;
+    if (onlyKey != null) {
+      _scheduleSave({onlyKey});
+    } else if (keys.isNotEmpty) {
+      _scheduleSave(keys);
+    } else {
+      _scheduleSave(next.toJson().keys.toSet());
+    }
+  }
 
-  Future<void> setBotName(String v) => _set(state.copyWith(botName: v));
+  void setMode(SendMode mode) => _set(state.copyWith(mode: mode));
 
-  Future<void> setAvatarUrl(String v) => _set(state.copyWith(avatarUrl: v));
+  void setWebhookUrl(String v) =>
+      _set(state.copyWith(webhookUrl: v.trim()), onlyKey: 'webhookUrl');
 
-  Future<void> setBotToken(String v) => _set(state.copyWith(botToken: v));
+  void setBotName(String v) => _set(state.copyWith(botName: v), onlyKey: 'botName');
 
-  Future<void> setChannel({required String id, String? name}) =>
-      _set(state.copyWith(channelId: id, channelName: name ?? state.channelName));
+  void setAvatarUrl(String v) =>
+      _set(state.copyWith(avatarUrl: v.trim()), onlyKey: 'avatarUrl');
 
-  Future<void> setChannelName(String v) => _set(state.copyWith(channelName: v));
+  void setBotToken(String v) =>
+      _set(state.copyWith(botToken: v.trim()), onlyKey: 'botToken');
+
+  /// B11: suntingan ID channel MANUAL (name == null) MEMBERSHKAN
+  /// channelName lama — dulu label & sejarah menunjukkan channel salah.
+  void setChannel({required String id, String? name}) => _set(
+        state.copyWith(channelId: id.trim(), channelName: name ?? ''),
+        keys: {'channelId', 'channelName'},
+      );
+
+  void setChannelName(String v) =>
+      _set(state.copyWith(channelName: v), onlyKey: 'channelName');
 }
 
 final configProvider =
     StateNotifierProvider<ConfigNotifier, SendConfig>((ref) => ConfigNotifier());
 
-/// Tetapan aplikasi (tema, orientasi, onboarding).
+/// Tetapan aplikasi (tema, orientasi, onboarding, had saiz).
 class SettingsState {
   const SettingsState({
     this.themeMode = AppThemeMode.dark,
     this.orientation = OrientationSetting.auto,
     this.onboardingDone = false,
     this.appVersion = '',
+    this.maxFileMB = 20,
   });
 
   final AppThemeMode themeMode;
@@ -110,17 +164,22 @@ class SettingsState {
   final bool onboardingDone;
   final String appVersion;
 
+  /// B02: had saiz muat naik aktif (MB) — preset 10/20/50/100.
+  final int maxFileMB;
+
   SettingsState copyWith({
     AppThemeMode? themeMode,
     OrientationSetting? orientation,
     bool? onboardingDone,
     String? appVersion,
+    int? maxFileMB,
   }) =>
       SettingsState(
         themeMode: themeMode ?? this.themeMode,
         orientation: orientation ?? this.orientation,
         onboardingDone: onboardingDone ?? this.onboardingDone,
         appVersion: appVersion ?? this.appVersion,
+        maxFileMB: maxFileMB ?? this.maxFileMB,
       );
 }
 
@@ -128,7 +187,7 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   SettingsNotifier() : super(const SettingsState());
 
   Future<void> load() async {
-    final s = await SecureStore.loadSettings();
+    final s = await SecureStore.loadSettingsSafe();
     state = state.copyWith(
       themeMode: switch (s.themeMode) {
         'light' => AppThemeMode.light,
@@ -141,6 +200,7 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
         _ => OrientationSetting.auto,
       },
       onboardingDone: s.onboardingDone,
+      maxFileMB: s.maxFileMB,
     );
   }
 
@@ -164,17 +224,21 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
     await SecureStore.saveOrientation(names[o]!);
   }
 
+  /// B02: tukar had saiz muat naik (preset 10/20/50/100 MB).
+  Future<void> setMaxFileMB(int mb) async {
+    state = state.copyWith(maxFileMB: mb);
+    await SecureStore.saveMaxFileMB(mb);
+  }
+
   Future<void> completeOnboarding() async {
     state = state.copyWith(onboardingDone: true);
     await SecureStore.setOnboardingDone();
   }
 
-  Future<void> resetOnboarding() async {
-    state = state.copyWith(onboardingDone: false);
-    await SecureStore.setOnboardingDone();
-    await SecureStore.saveOrientation(
-        state.orientation == OrientationSetting.auto ? 'auto' : state.orientation.name);
-  }
+  // B14: resetOnboarding() DIBUANG — "Show getting-started guide" kini
+  // hanya membuka panduan sebagai laman (lihat settings_screen); nilai
+  // persisted/in-memory onboardingDone TIDAK diubah lagi (dulu: reset
+  // in-memory sahaja + MaterialApp.home bertukar di bawah route).
 }
 
 final settingsProvider =

@@ -253,9 +253,11 @@ class _ListPaneState extends ConsumerState<_ListPane> {
     if (pick == null || !context.mounted) return;
 
     // Keselamatan: data log sentiasa ditapis sejak dicipta — tulis terus.
+    // B25: sanitizeText turut dipakai pada EKSPORT JSON (pertahanan
+    // mendalam — sama seperti TXT), bukan hanya TXT.
     final stamp = DateTime.now().millisecondsSinceEpoch;
     final content = pick == 'json'
-        ? const JsonEncoder.withIndent('  ').convert([
+        ? Security.sanitizeText(const JsonEncoder.withIndent('  ').convert([
             for (final e in entries)
               {
                 'batch': e.batchNumber,
@@ -274,7 +276,7 @@ class _ListPaneState extends ConsumerState<_ListPane> {
                 'error': e.errorMessage,
                 'explanation': e.explanation,
               }
-          ])
+          ]))
         : Security.sanitizeText([
             for (final e in entries)
               '[${formatDateTime(e.timestamp)}] #${e.batchNumber} ${e.method} ${e.endpoint} '

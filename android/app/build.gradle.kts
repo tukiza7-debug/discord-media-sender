@@ -56,7 +56,9 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
-            // Shrink & obfuscate untuk saiz APK yang kemas.
+            // R8 minify/shrink DIMATIKAN sengaja (B23): plugin refleksi
+            // (flutter_secure_storage, sqflite) memerlukan keep rules jika
+            // diaktifkan — belum diuji. Jangan dakwa "shrink & obfuscate".
             isMinifyEnabled = false
             isShrinkResources = false
         }

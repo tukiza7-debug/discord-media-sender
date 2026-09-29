@@ -14,6 +14,8 @@ class FakeDiscordApi extends DiscordApi {
     this.hangUntilCancel = false,
     this.throwError = false,
     this.failTimes = 0,
+    this.failWithHttp,
+    this.failWithDiscord,
     this.delay = Duration.zero,
   });
 
@@ -24,6 +26,10 @@ class FakeDiscordApi extends DiscordApi {
   /// N panggilan pertama gagal (outcome gagal biasa), selepas itu berjaya —
   /// untuk menguji auto-retry 3 cubaan.
   final int failTimes;
+
+  /// B02: kod HTTP untuk kegagalan tiruan (cth. 413 — gagal pantas).
+  final int? failWithHttp;
+  final int? failWithDiscord;
   final Duration delay;
   int calls = 0;
   List<CancelToken?> seenTokens = [];
@@ -38,15 +44,18 @@ class FakeDiscordApi extends DiscordApi {
     required int totalBatches,
     required int attempt,
     void Function(int sent, int total)? onProgress,
+    bool Function()? isCancelled,
+    void Function()? onRateLimitWaitTick,
   }) async {
     calls++;
     seenTokens.add(cancelToken);
     if (delay > Duration.zero) await Future<void>.delayed(delay);
     if (throwError) throw Exception('disk exploded');
     if (calls <= failTimes) {
-      return const BatchOutcome(
+      return BatchOutcome(
         success: false,
-        httpCode: 502,
+        httpCode: failWithHttp ?? 502,
+        discordCode: failWithDiscord,
         errorMessage: 'Server exploded',
       );
     }
@@ -90,7 +99,6 @@ MediaItem _missingItem() => const MediaItem(
     );
 
 void _noopBatchFailed(List<MediaItem> b, int i, int? h, int? d, String? m) {}
-void _noopLog(ResponseLogEntry e) {}
 
 void main() {
   test('progres dipancar dengan jumlah sebenar — TIADA lagi 0/0', () async {
@@ -110,7 +118,6 @@ void main() {
       items: [_item(f1), _item(f2)],
       config: _cfg(),
       caption: '',
-      onLog: _noopLog,
       onBatchFailed: _noopBatchFailed,
     );
 
@@ -148,7 +155,6 @@ void main() {
       items: [_item(f1), _item(f2)],
       config: _cfg(),
       caption: '',
-      onLog: _noopLog,
       onBatchFailed: _noopBatchFailed,
     );
 
@@ -182,7 +188,6 @@ void main() {
       items: [_item(f1)],
       config: _cfg(),
       caption: '',
-      onLog: _noopLog,
       onBatchFailed: _noopBatchFailed,
     );
 
@@ -213,7 +218,6 @@ void main() {
       items: [_item(f1)],
       config: _cfg(),
       caption: '',
-      onLog: _noopLog,
       onBatchFailed: _noopBatchFailed,
     );
 
@@ -240,7 +244,6 @@ void main() {
       items: [_item(f1)],
       config: _cfg(),
       caption: '',
-      onLog: _noopLog,
       onBatchFailed: _noopBatchFailed,
     );
 
@@ -262,7 +265,6 @@ void main() {
       items: [_item(f1), _missingItem()],
       config: _cfg(),
       caption: '',
-      onLog: _noopLog,
       onBatchFailed: (b, i, h, d, m) => failedBatches.add((b, m)),
     );
 
@@ -286,7 +288,6 @@ void main() {
       items: [_missingItem()],
       config: _cfg(),
       caption: '',
-      onLog: _noopLog,
       onBatchFailed: _noopBatchFailed,
     );
 
@@ -311,7 +312,6 @@ void main() {
       items: [_item(f1)],
       config: _cfg(),
       caption: '',
-      onLog: _noopLog,
       onBatchFailed: (b, i, h, d, m) => failedBatches.add((b, m)),
     );
 
@@ -339,7 +339,6 @@ void main() {
       items: [_item(f1)],
       config: _cfg(),
       caption: '',
-      onLog: _noopLog,
       onBatchFailed: _noopBatchFailed,
     );
 
@@ -365,7 +364,6 @@ void main() {
       items: [_item(f1)],
       config: _cfg(),
       caption: '',
-      onLog: _noopLog,
       onBatchFailed: (b, i, h, d, m) => failedBatches.add((b, m)),
     );
 
@@ -392,7 +390,6 @@ void main() {
       items: [_item(f1)],
       config: _cfg(),
       caption: '',
-      onLog: _noopLog,
       onBatchFailed: (b, i, h, d, m) => failedBatches.add((b, m)),
     );
 
@@ -408,5 +405,117 @@ void main() {
     final out = UploadEngine.chunkItems(List<int>.generate(25, (i) => i), 10);
     expect(out.map((e) => e.length).toList(), [10, 10, 5]);
     expect(UploadEngine.chunkItems(const <int>[], 10), isEmpty);
+  });
+
+  test('B02: 413 TIDAK dicuba semula — tepat 1 cubaan, gagal pantas',
+      () async {
+    final f1 = await _tempFile('m.png');
+    final api = FakeDiscordApi(failTimes: 99, failWithHttp: 413);
+    final engine = UploadEngine(
+      api: api,
+      maxRetries: 3,
+      backoffSeconds: const [0, 0, 0],
+      watchdogTick: const Duration(milliseconds: 20),
+    );
+
+    final failedBatches = <(List<MediaItem>, int?)>[];
+    final status = await engine.run(
+      items: [_item(f1)],
+      config: _cfg(),
+      caption: '',
+      onBatchFailed: (b, i, h, d, m) => failedBatches.add((b, h)),
+    );
+
+    expect(status, 'failed');
+    expect(api.calls, 1, reason: '413 kekal — dilarang dicuba semula');
+    expect(failedBatches, hasLength(1));
+    expect(failedBatches.single.$2, 413);
+  });
+
+  test('B02: 5xx dicuba semula sehingga maxRetries (3 cubaan)', () async {
+    final f1 = await _tempFile('n.png');
+    final api = FakeDiscordApi(failTimes: 99, failWithHttp: 502);
+    final engine = UploadEngine(
+      api: api,
+      maxRetries: 3,
+      backoffSeconds: const [0, 0, 0],
+      watchdogTick: const Duration(milliseconds: 20),
+    );
+
+    final status = await engine.run(
+      items: [_item(f1)],
+      config: _cfg(),
+      caption: '',
+      onBatchFailed: _noopBatchFailed,
+    );
+
+    expect(status, 'failed');
+    expect(api.calls, 3, reason: '5xx sementara — penuh 3 cubaan');
+  });
+
+  test('B02: chunkByCountAndBytes — ikut kiraan DAN jumlah bait', () {
+    MediaItem mk(int mb) => MediaItem(
+          id: 'x$mb',
+          path: '/tmp/x$mb.png',
+          name: 'x$mb.png',
+          sizeBytes: mb * 1000 * 1000,
+          type: MediaType.image,
+          mimeType: 'image/png',
+        );
+
+    final items = [mk(5), mk(5), mk(5), mk(5)]; // 4 x 5 MB
+    final (batches, rejected) = UploadEngine.chunkByCountAndBytes(
+        items, 10, 10 * 1000 * 1000); // had 10 MB/batch
+    // 2 fail 5MB = 10MB (tepat had, masuk); jadi [5,5], [5,5].
+    expect(batches.map((b) => b.length).toList(), [2, 2]);
+    expect(rejected, isEmpty);
+
+    // Fail tunggal melebihi had → ditolak, tidak pernah dihantar.
+    final big = [mk(5), mk(50)];
+    final (b2, rej2) =
+        UploadEngine.chunkByCountAndBytes(big, 10, 20 * 1000 * 1000);
+    expect(b2.single.length, 1);
+    expect(rej2.single.sizeBytes, 50 * 1000 * 1000);
+  });
+
+  test('B09: jeda semasa batch — status TIDAK kembali running sebelum resume',
+      () async {
+    final f1 = await _tempFile('o.png');
+    final api = FakeDiscordApi(delay: const Duration(milliseconds: 700));
+    final engine = UploadEngine(
+      api: api,
+      backoffSeconds: const [0, 0, 0],
+      watchdogTick: const Duration(milliseconds: 20),
+    );
+
+    final events = <UploadProgress>[];
+    final sub = engine.progressStream.listen(events.add);
+
+    final fut = engine.run(
+      items: [_item(f1)],
+      config: _cfg(),
+      caption: '',
+      onBatchFailed: _noopBatchFailed,
+    );
+
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    engine.pause(); // jeda SEMASA batch dalam penerbangan
+    final List<UploadProgress> pausedSeen = await Future<List<UploadProgress>>
+        .delayed(const Duration(milliseconds: 350), () => events);
+
+    // Semua peristiwa selepas jeda TIDAK berstatus 'running'.
+    var sawPaused = false;
+    for (final e in pausedSeen) {
+      if (e.state == EngineState.paused) sawPaused = true;
+      if (sawPaused && e.state == EngineState.running) {
+        fail('state kembali running sedangkan masih dijeda (bug B09)');
+      }
+    }
+    expect(sawPaused, isTrue, reason: 'status paused mesti dipancarkan');
+
+    engine.resume();
+    final status = await fut;
+    sub.cancel();
+    expect(status, 'completed');
   });
 }

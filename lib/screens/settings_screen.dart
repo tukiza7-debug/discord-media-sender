@@ -5,6 +5,9 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/app_theme.dart';
+import '../../core/constants.dart';
+import '../../core/secure_store.dart';
+import '../../models/models.dart';
 import '../../providers/config_providers.dart';
 import '../../providers/history_providers.dart';
 import '../../providers/response_providers.dart';
@@ -92,26 +95,69 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 20),
 
+              // B02: had saiz muat naik aktif.
+              const SectionLabel('Upload limit'),
+              AppCard(
+                child: _SettingRow(
+                  icon: LucideIcons.hardDrive,
+                  title: 'Max file size per upload',
+                  subtitle: 'Files larger than the limit are skipped. '
+                      'Discord allows up to 100 MB on boosted servers.',
+                  trailing: SegmentedButton<int>(
+                    segments: [
+                      for (final mb in AppLimits.fileSizePresetsMB)
+                        ButtonSegment(value: mb, label: Text('$mb')),
+                    ],
+                    selected: {settings.maxFileMB},
+                    onSelectionChanged: (s) => ref
+                        .read(settingsProvider.notifier)
+                        .setMaxFileMB(s.first),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+
               // Notifications
               const SectionLabel('Notifications'),
               AppCard(
-                child: ListTile(
-                  leading: const Icon(LucideIcons.info),
-                  title: const Text('Notification permission'),
-                  subtitle: Text(
-                    _notifGranted == null
-                        ? 'Checking...'
-                        : (_notifGranted!
-                            ? 'Granted — send progress is displayed'
-                            : 'Not granted — sending still runs without notifications'),
-                  ),
-                  trailing: FilledButton.tonal(
-                    onPressed: () async {
-                      final s = await Permission.notification.request();
-                      setState(() => _notifGranted = s.isGranted);
-                    },
-                    child: const Text('Allow'),
-                  ),
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(LucideIcons.info),
+                      title: const Text('Notification permission'),
+                      subtitle: Text(
+                        _notifGranted == null
+                            ? 'Checking...'
+                            : (_notifGranted!
+                                ? 'Granted — send progress is displayed'
+                                : 'Not granted — sending still runs without notifications'),
+                      ),
+                      trailing: FilledButton.tonal(
+                        onPressed: () async {
+                          final s = await Permission.notification.request();
+                          setState(() => _notifGranted = s.isGranted);
+                        },
+                        child: const Text('Allow'),
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    // B15: pengecualian pengoptimuman bateri — hantaran
+                    // panjang lebih dipercayai di latar belakang.
+                    ListTile(
+                      leading: const Icon(LucideIcons.batteryCharging),
+                      title: const Text('Battery optimization'),
+                      subtitle: const Text(
+                          'Disable optimization for more reliable long uploads'),
+                      trailing: FilledButton.tonal(
+                        onPressed: () async {
+                          try {
+                            await Permission.ignoreBatteryOptimizations.request();
+                          } catch (_) {}
+                        },
+                        child: const Text('Open'),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 20),
@@ -163,11 +209,48 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   leading: const Icon(LucideIcons.keyboard),
                   title: const Text('Show the getting-started guide'),
                   subtitle: const Text('How to get a webhook, bot token & pick a folder'),
+                  // B14: paparan semula panduan TIDAK mengubah status
+                  // onboarding (persisted/in-memory) — hanya membuka laman.
                   onTap: () {
-                    ref.read(settingsProvider.notifier).resetOnboarding();
                     Navigator.of(context).push(MaterialPageRoute<void>(
                       builder: (_) => const _OnboardingHost(),
                     ));
+                  },
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // B25: buang kelayakan tersimpan.
+              AppCard(
+                child: ListTile(
+                  leading:
+                      const Icon(LucideIcons.keyRound, color: AppColors.danger),
+                  title: const Text('Clear saved credentials',
+                      style: TextStyle(color: AppColors.danger)),
+                  subtitle: const Text(
+                      'Wipe webhook URL, bot token & channel selection'),
+                  onTap: () async {
+                    final ok = await confirmDialog(
+                      context,
+                      title: 'Clear saved credentials?',
+                      message:
+                          'The webhook URL, bot token and channel selection will be '
+                          'removed from secure storage. History is not touched.',
+                      confirmLabel: 'Clear',
+                    );
+                    if (ok) {
+                      await SecureStore.safeWipeAll();
+                      // Reset provider kepada nilai lalai.
+                      ref.read(configProvider.notifier).setMode(SendMode.webhook);
+                      ref.read(configProvider.notifier).setWebhookUrl('');
+                      ref.read(configProvider.notifier).setBotToken('');
+                      ref.read(configProvider.notifier).setAvatarUrl('');
+                      ref.read(configProvider.notifier).setBotName('');
+                      ref.read(configProvider.notifier).setChannel(id: '');
+                      if (context.mounted) {
+                        showAppSnackBar(context, 'Saved credentials cleared.');
+                      }
+                    }
                   },
                 ),
               ),
@@ -193,7 +276,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       Text('Discord Media Sender',
                           style: Theme.of(context).textTheme.titleMedium),
                       Text(
-                        'Versi ${_info?.version ?? '-'} (${_info?.buildNumber ?? '-'})',
+                        'Version ${_info?.version ?? '-'} (${_info?.buildNumber ?? '-'})',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),

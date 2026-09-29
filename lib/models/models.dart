@@ -25,7 +25,19 @@ enum MediaStatus {
 }
 
 extension MediaStatusX on MediaStatus {
-  bool get canSend => this == MediaStatus.ready;
+  /// B05: 'ready' boleh dihantar; 'cancelled' (baki selepas batal) juga
+  /// boleh dihantar semula melalui tindakan 'Send remaining'/'Send'.
+  bool get canSend => this == MediaStatus.ready || this == MediaStatus.cancelled;
+
+  String get label => switch (this) {
+        MediaStatus.ready => 'Ready',
+        MediaStatus.oversized => 'Too large',
+        MediaStatus.limitExceeded => 'Limit',
+        MediaStatus.missing => 'Missing',
+        MediaStatus.sent => 'Sent',
+        MediaStatus.failed => 'Failed',
+        MediaStatus.cancelled => 'Cancelled',
+      };
 }
 
 /// Satu fail media dalam baris giliran.
@@ -357,7 +369,7 @@ class SessionRecord {
   }
 }
 
-/// Rekod kegagalan (batch/fail yang gagal selepas 3 cubaan).
+/// Rekod kegagalan (batch/fail yang gagal selepas cubaan habis).
 class FailedRecord {
   const FailedRecord({
     this.id,
@@ -367,6 +379,7 @@ class FailedRecord {
     required this.sizeBytes,
     required this.batchIndex,
     required this.httpCode,
+    this.discordCode,
     required this.errorMessage,
     required this.mode,
     required this.target,
@@ -380,6 +393,7 @@ class FailedRecord {
   final int sizeBytes;
   final int batchIndex;
   final int? httpCode; // null = ralat rangkaian
+  final int? discordCode; // B24: kod ralat Discord (cth. 40005)
   final String errorMessage;
   final String mode;
   final String target;
@@ -393,6 +407,7 @@ class FailedRecord {
         'size_bytes': sizeBytes,
         'batch_index': batchIndex,
         'http_code': httpCode,
+        'discord_code': discordCode,
         'error_message': errorMessage,
         'mode': mode,
         'target': target,
@@ -407,6 +422,7 @@ class FailedRecord {
         sizeBytes: (m['size_bytes'] ?? 0) as int,
         batchIndex: (m['batch_index'] ?? 0) as int,
         httpCode: m['http_code'] as int?,
+        discordCode: m['discord_code'] as int?,
         errorMessage: (m['error_message'] ?? '') as String,
         mode: (m['mode'] ?? 'webhook') as String,
         target: (m['target'] ?? '') as String,

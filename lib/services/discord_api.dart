@@ -62,6 +62,12 @@ class DiscordApi {
   /// Hook log masa nyata (diwayar oleh enjin hantaran).
   void Function(ResponseLogEntry entry)? onLog;
 
+  /// Ujian sahaja: ganti adapter Dio (mock 429 dsb. tanpa rangkaian).
+  @visibleForTesting
+  void debugAttachAdapter(HttpClientAdapter adapter) {
+    _dio.httpClientAdapter = adapter;
+  }
+
   // ---------------------------------------------------------------- send
 
   Future<BatchOutcome> sendBatch({
@@ -73,6 +79,14 @@ class DiscordApi {
     required int totalBatches,
     required int attempt,
     void Function(int sent, int total)? onProgress,
+
+    /// Flag batal luaran (enjin) — ditambah pada CancelToken supaya
+    /// tunggu rate-limit juga boleh dihentikan.
+    bool Function()? isCancelled,
+
+    /// Tick berkala semasa menunggu rate-limit — enjin guna ini untuk
+    /// menyegarkan _lastActivity supaya stall watchdog tidak tercetus.
+    void Function()? onRateLimitWaitTick,
   }) async {
     final isWebhook = config.mode == SendMode.webhook;
     final endpoint = isWebhook
@@ -85,6 +99,11 @@ class DiscordApi {
     final payload = <String, dynamic>{};
     final text = caption?.trim() ?? '';
     if (text.isNotEmpty) payload['content'] = text;
+    // B18: matikan mentions secara lalai — kapsyen tidak boleh
+    // mass-mention @everyone/@here/@role/@user secara tidak sengaja.
+    if (!AppLimits.allowCaptionMentions) {
+      payload['allowed_mentions'] = const {'parse': <String>[]};
+    }
     if (isWebhook) {
       if (config.botName.trim().isNotEmpty) payload['username'] = config.botName.trim();
       if (config.avatarUrl.trim().isNotEmpty) payload['avatar_url'] = config.avatarUrl.trim();
@@ -171,7 +190,34 @@ class DiscordApi {
             elapsedMs: sw.elapsedMilliseconds,
             retryAfterMs: waitMs,
           ));
-          await Future<void>.delayed(Duration(milliseconds: waitMs + 250));
+          // B01: tunggu BOLEH-BATAL (hormati CancelToken + flag enjin)
+          // dan memberi tick supaya stall watchdog tidak tercetus.
+          final cancelledDuringWait = await _cancelAwareWait(
+            waitMs,
+            cancelToken: cancelToken,
+            isCancelled: isCancelled,
+            onTick: onRateLimitWaitTick,
+          );
+          if (cancelledDuringWait) {
+            _emit(_errorEntry(
+              config: config,
+              maskedEndpoint: maskedEndpoint,
+              fileNames: fileNames,
+              filePaths: files.map((f) => f.path).toList(growable: false),
+              batchNumber: batchNumber,
+              totalBatches: totalBatches,
+              uploadBytes: uploadBytes,
+              attempt: attempt,
+              status: LogStatus.cancelled,
+              statusCode: 429,
+              e: e,
+              elapsedMs: sw.elapsedMilliseconds,
+              explanationOverride:
+                  'Request cancelled while waiting out the rate limit.',
+            ));
+            return const BatchOutcome(
+                success: false, cancelled: true, httpCode: 429);
+          }
           rateWaits++;
           continue;
         }
@@ -195,7 +241,7 @@ class DiscordApi {
           e: e,
           elapsedMs: sw.elapsedMilliseconds,
           explanationOverride:
-              '$expl.title — ${expl.detail}${dCode != null ? ' (kod Discord: $dCode)' : ''}',
+              '${expl.title} — ${expl.detail}${dCode != null ? ' (Discord code: $dCode)' : ''}',
         ));
         return BatchOutcome(
           success: false,
@@ -352,17 +398,24 @@ class DiscordApi {
   // ----------------------------------------------------------- channels
 
   Future<List<GuildInfo>> fetchGuilds(String token) async {
-    final resp = await _dio.get<List<dynamic>>(
-      '${DiscordConstants.apiBase}/users/@me/guilds?with_counts=false&limit=100',
-      options: Options(headers: {'Authorization': botAuthHeader(token)}),
-    );
-    return (resp.data ?? [])
-        .whereType<Map<String, dynamic>>()
-        .map((g) => GuildInfo(
-              id: (g['id'] ?? '').toString(),
-              name: (g['name'] ?? 'Server').toString(),
-            ))
-        .toList();
+    // B20: pagination — Discord hadkan 100 guild per halaman (after=<id>).
+    final out = <GuildInfo>[];
+    var after = '0';
+    for (var page = 0; page < 10; page++) {
+      final resp = await _dio.get<List<dynamic>>(
+        '${DiscordConstants.apiBase}/users/@me/guilds?with_counts=false&limit=100&after=$after',
+        options: Options(headers: {'Authorization': botAuthHeader(token)}),
+      );
+      final rows = resp.data ?? [];
+      if (rows.isEmpty) break;
+      for (final g in rows.whereType<Map<String, dynamic>>()) {
+        final id = (g['id'] ?? '').toString();
+        out.add(GuildInfo(id: id, name: (g['name'] ?? 'Server').toString()));
+        after = id;
+      }
+      if (rows.length < 100) break;
+    }
+    return out;
   }
 
   Future<List<ChannelInfo>> fetchTextChannels(String token, String guildId) async {
@@ -372,8 +425,8 @@ class DiscordApi {
     );
     return (resp.data ?? [])
         .whereType<Map<String, dynamic>>()
-        // type 0 = GUILD_TEXT
-        .where((c) => (c['type'] ?? -1) == 0)
+        // type 0 = GUILD_TEXT, type 5 = GUILD_ANNOUNCEMENT (B20)
+        .where((c) => (c['type'] ?? -1) == 0 || (c['type'] ?? -1) == 5)
         .map((c) => ChannelInfo(
               id: (c['id'] ?? '').toString(),
               name: (c['name'] ?? '').toString(),
@@ -401,6 +454,28 @@ class DiscordApi {
   }
 
   // ------------------------------------------------------------ helpers
+
+  /// B01: tunggu yang boleh dihentikan — semak CancelToken + flag batal
+  /// enjin setiap 100 ms dan panggil onTick supaya enjin boleh menyegarkan
+  /// _lastActivity (stall watchdog tidak tercetus semasa tunggu 429).
+  /// Pulangkan true jika dibatalkan semasa menunggu.
+  Future<bool> _cancelAwareWait(
+    int milliseconds, {
+    CancelToken? cancelToken,
+    bool Function()? isCancelled,
+    void Function()? onTick,
+  }) async {
+    const step = 100;
+    var waited = 0;
+    while (waited < milliseconds) {
+      if (cancelToken?.isCancelled ?? false) return true;
+      if (isCancelled?.call() ?? false) return true;
+      await Future<void>.delayed(const Duration(milliseconds: step));
+      waited += step;
+      onTick?.call();
+    }
+    return false;
+  }
 
   void _emit(ResponseLogEntry entry) {
     final log = onLog;
@@ -431,20 +506,25 @@ class DiscordApi {
   }
 
   int? _retryAfterMs(Response? resp) {
-    // Badan 429 Discord: retry_after dalam milisaat.
-    final body = resp?.data;
-    if (body is Map && body['retry_after'] != null) {
-      final v = double.tryParse(body['retry_after'].toString());
-      if (v != null) return (v).round().clamp(0, 600000);
-    }
-    // Header Retry-After dalam saat (boleh perpuluhan).
+    // B01: 'Retry-After' header (saat, boleh perpuluhan) — diutamakan.
     final h = resp?.headers.value('retry-after');
     if (h != null) {
       final v = double.tryParse(h);
-      if (v != null) return (v * 1000).round().clamp(0, 600000);
+      if (v != null) return _clampRateWait((v * 1000).round());
+    }
+    // B01: badan 429 Discord — retry_after adalah FLOAT dalam SAAT
+    // (dok Discord: "number of seconds to wait"), BUKAN milisaat.
+    final body = resp?.data;
+    if (body is Map && body['retry_after'] != null) {
+      final v = double.tryParse(body['retry_after'].toString());
+      if (v != null) return _clampRateWait((v * 1000).round());
     }
     return null;
   }
+
+  /// Kepit tunggu rate-limit ke julat munasabah (250 ms … 10 minit).
+  static int _clampRateWait(int ms) =>
+      ms.clamp(AppLimits.minRateLimitWaitMs, AppLimits.maxRateLimitWaitMs);
 
   int? _discordErrorCode(Object? body) {
     if (body is Map && body['code'] != null) {
@@ -507,9 +587,6 @@ class DiscordApi {
     if (code == 429) return 'RATE LIMIT';
     return 'ERROR';
   }
-
-  static String humanBatch(int n, int total, int files) =>
-      'Batch $n/$total • $files files';
 }
 
 /// Bungkusan jsonEncode yang selamat untuk badan kecil.
@@ -521,5 +598,3 @@ String jsonEncodeSafe(Object? o) {
   }
 }
 
-@visibleForTesting
-String debugMasked(String url) => Security.maskWebhookUrl(url);

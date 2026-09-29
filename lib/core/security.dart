@@ -22,9 +22,6 @@ class Security {
   static String maskBotToken(String token) =>
       token.trim().isEmpty ? '' : 'Bot ****';
 
-  /// Tapiskan mana-mana rahsia dalam teks bebas.
-  static String maskSecret(String secret) => '****';
-
   /// Sapukan JSON secara rekursif: kunci yang mengandungi rahsia
   /// ditapis sebelum dipapar/dieksport.
   static Object? sanitizeJson(Object? node) {

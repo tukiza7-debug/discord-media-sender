@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/app_theme.dart';
 import '../../core/error_translator.dart';
+import '../../core/validators.dart';
 import '../../models/models.dart';
 import '../../providers/config_providers.dart';
 import '../../services/discord_api.dart';
@@ -141,6 +142,18 @@ class _ConfigCardState extends ConsumerState<ConfigCard> {
   }
 
   Future<void> _runTest(SendConfig config) async {
+    // B11: ujian hanya dibenarkan bila konfigurasi SAH (bukan sekadar
+    // tidak kosong).
+    if (!configValid(config)) {
+      setState(() => _testResult = TestResult(
+          ok: false,
+          message: config.mode == SendMode.webhook
+              ? (Validators.webhookUrl(config.webhookUrl) ?? 'Invalid configuration')
+              : (Validators.botToken(config.botToken) ??
+                  Validators.channelId(config.channelId) ??
+                  'Invalid configuration')));
+      return;
+    }
     setState(() {
       _testing = true;
       _testResult = null;
@@ -193,11 +206,18 @@ class _WebhookFieldsState extends ConsumerState<_WebhookFields> {
           controller: _urlCtrl,
           keyboardType: TextInputType.url,
           autofillHints: const [AutofillHints.url],
-          onChanged: (v) => ref.read(configProvider.notifier).setWebhookUrl(v),
-          decoration: const InputDecoration(
-            labelText: 'URL Webhook',
+          onChanged: (v) {
+            ref.read(configProvider.notifier).setWebhookUrl(v);
+            setState(() {}); // B11: segarkan errorText hidup
+          },
+          decoration: InputDecoration(
+            labelText: 'Webhook URL',
             hintText: 'https://discord.com/api/webhooks/...',
-            prefixIcon: Icon(LucideIcons.link, size: 18),
+            prefixIcon: const Icon(LucideIcons.link, size: 18),
+            // B11: errorText hidup — papar hanya bila tidak kosong & tidak sah.
+            errorText: _urlCtrl.text.isEmpty
+                ? null
+                : Validators.webhookUrl(_urlCtrl.text),
           ),
         ),
         const SizedBox(height: 12),
@@ -218,10 +238,16 @@ class _WebhookFieldsState extends ConsumerState<_WebhookFields> {
               child: TextField(
                 controller: _avatarCtrl,
                 keyboardType: TextInputType.url,
-                onChanged: (v) => ref.read(configProvider.notifier).setAvatarUrl(v),
-                decoration: const InputDecoration(
+                onChanged: (v) {
+                  ref.read(configProvider.notifier).setAvatarUrl(v);
+                  setState(() {});
+                },
+                decoration: InputDecoration(
                   labelText: 'Avatar URL (optional)',
                   hintText: 'https://...',
+                  errorText: _avatarCtrl.text.isEmpty
+                      ? null
+                      : Validators.avatarUrl(_avatarCtrl.text),
                 ),
               ),
             ),
@@ -271,11 +297,17 @@ class _BotFieldsState extends ConsumerState<_BotFields> {
           obscureText: widget.obscureToken,
           autocorrect: false,
           enableSuggestions: false,
-          onChanged: (v) => ref.read(configProvider.notifier).setBotToken(v),
+          onChanged: (v) {
+            ref.read(configProvider.notifier).setBotToken(v);
+            setState(() {}); // B11: segarkan errorText hidup
+          },
           decoration: InputDecoration(
             labelText: 'Bot Token',
             hintText: 'Paste the token from the Developer Portal',
             prefixIcon: const Icon(LucideIcons.lock, size: 18),
+            errorText: _tokenCtrl.text.isEmpty
+                ? null
+                : Validators.botToken(_tokenCtrl.text),
             suffixIcon: IconButton(
               icon: Icon(
                   widget.obscureToken ? LucideIcons.eyeOff : LucideIcons.eye,
@@ -294,11 +326,18 @@ class _BotFieldsState extends ConsumerState<_BotFields> {
                 controller: _channelCtrl,
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                onChanged: (v) =>
-                    ref.read(configProvider.notifier).setChannel(id: v),
-                decoration: const InputDecoration(
+                onChanged: (v) {
+                  // B11: suntingan manual ID channel — channelName lama
+                  // dibersihkan (setChannel tanpa name).
+                  ref.read(configProvider.notifier).setChannel(id: v);
+                  setState(() {});
+                },
+                decoration: InputDecoration(
                   labelText: 'Channel ID',
                   hintText: 'Example: 1234567890123456789',
+                  errorText: _channelCtrl.text.isEmpty
+                      ? null
+                      : Validators.channelId(_channelCtrl.text),
                 ),
               ),
             ),
@@ -352,7 +391,7 @@ class _BotFieldsState extends ConsumerState<_BotFields> {
     );
     if (sel != null) {
       _channelCtrl.text = sel.id;
-      await ref.read(configProvider.notifier).setChannel(id: sel.id, name: sel.name);
+      ref.read(configProvider.notifier).setChannel(id: sel.id, name: sel.name);
       if (context.mounted) {
         showAppSnackBar(context, 'Channel selected: #${sel.name}', success: true);
       }

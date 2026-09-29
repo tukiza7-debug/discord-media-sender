@@ -4,9 +4,13 @@ import 'package:sqflite/sqflite.dart';
 import '../models/models.dart';
 
 /// Pangkalan data tempatan (SQLite) untuk Sejarah & Gagal.
+///
+/// B24: skema v2 — indeks sessions(started_at), lajur discord_code pada
+/// failures, onUpgrade scaffolding, transaksi untuk hapus berbilang baris,
+/// dan pembersihan rekod lama (prune).
 class DatabaseService {
   DatabaseService._();
-  static final DatabaseService instance = DatabaseService._();
+  static DatabaseService instance = DatabaseService._();
 
   Database? _db;
 
@@ -16,7 +20,7 @@ class DatabaseService {
     final dir = await getDatabasesPath();
     _db = await openDatabase(
       p.join(dir, 'discord_media_sender.db'),
-      version: 1,
+      version: 2,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, v) async {
         await db.execute('''
@@ -41,6 +45,7 @@ class DatabaseService {
             size_bytes INTEGER NOT NULL,
             batch_index INTEGER NOT NULL,
             http_code INTEGER,
+            discord_code INTEGER,
             error_message TEXT NOT NULL,
             mode TEXT NOT NULL,
             target TEXT NOT NULL,
@@ -50,6 +55,29 @@ class DatabaseService {
         ''');
         await db.execute('CREATE INDEX idx_failures_session ON failures(session_id)');
         await db.execute('CREATE INDEX idx_failures_created ON failures(created_at DESC)');
+        await db.execute('CREATE INDEX idx_failures_path ON failures(file_path)');
+        await db.execute('CREATE INDEX idx_sessions_started ON sessions(started_at DESC)');
+      },
+      // B24: scaffolding onUpgrade untuk perubahan skema masa depan.
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          // v2: lajur discord_code + indeks baharu.
+          final cols = await db.query('failures', limit: 1);
+          if (cols.isNotEmpty && !cols.first.containsKey('discord_code')) {
+            await db.execute('ALTER TABLE failures ADD COLUMN discord_code INTEGER');
+          } else if (cols.isEmpty) {
+            // Jadual kosong — tambah lajur tanpa semak baris.
+            try {
+              await db.execute('ALTER TABLE failures ADD COLUMN discord_code INTEGER');
+            } catch (_) {}
+          }
+          try {
+            await db.execute(
+                'CREATE INDEX IF NOT EXISTS idx_failures_path ON failures(file_path)');
+            await db.execute(
+                'CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at DESC)');
+          } catch (_) {}
+        }
       },
     );
     return _db!;
@@ -78,12 +106,12 @@ class DatabaseService {
   }
 
   /// Pulihkan sesi yang tersangkut pada status 'running' — berlaku apabila
-  /// aplikasi ditutup semasa hantaran (hantaran tidak kekal selepas app
-  /// dimatikan). Dipanggil sekali semasa app dimulakan supaya Sejarah
-  /// tidak memaparkan "running" selamanya.
+  /// aplikasi ditutup semasa hantaran. Dipanggil sekali semasa app
+  /// dimulakan supaya Sejarah tidak memaparkan "running" selamanya.
+  /// Sekali gus: B24 — buang rekod lama (kekal 500 sesi / 5000 kegagalan).
   Future<int> healStaleSessions() async {
     final db = await database;
-    return db.update(
+    var changed = await db.update(
       'sessions',
       {
         'status': 'cancelled',
@@ -91,6 +119,29 @@ class DatabaseService {
       },
       where: "status IN ('running', 'berjalan')",
     );
+    try {
+      await pruneOldRecords();
+    } catch (_) {}
+    return changed;
+  }
+
+  /// B24: simpan maksimum [keepSessions] sesi & [keepFailures] kegagalan.
+  Future<void> pruneOldRecords({int keepSessions = 500, int keepFailures = 5000}) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete(
+        'sessions',
+        where:
+            'id NOT IN (SELECT id FROM sessions ORDER BY started_at DESC LIMIT ?)',
+        whereArgs: [keepSessions],
+      );
+      await txn.delete(
+        'failures',
+        where:
+            'id NOT IN (SELECT id FROM failures ORDER BY created_at DESC LIMIT ?)',
+        whereArgs: [keepFailures],
+      );
+    });
   }
 
   Future<List<SessionRecord>> sessions({int limit = 500}) async {
@@ -104,6 +155,20 @@ class DatabaseService {
     await db.delete('sessions', where: 'id = ?', whereArgs: [id]);
   }
 
+  /// B24: hapus berbilang sesi dalam SATU transaksi.
+  Future<void> deleteSessions(Iterable<int> ids) async {
+    final db = await database;
+    final list = ids.toList();
+    if (list.isEmpty) return;
+    await db.transaction((txn) async {
+      final batch = txn.batch();
+      for (final id in list) {
+        batch.delete('sessions', where: 'id = ?', whereArgs: [id]);
+      }
+      await batch.commit(noResult: true);
+    });
+  }
+
   Future<void> clearSessions() async {
     final db = await database;
     await db.delete('sessions');
@@ -111,14 +176,51 @@ class DatabaseService {
 
   // ---------------------------------------------------------- gagal
 
+  /// B04: tulis rekod kegagalan secara ATOMIK (transaksi) — baris dengan
+  /// file_path yang SAMA dikemas kini (bukan pendua baharu). Retry yang
+  /// gagal semula tidak lagi mengumpul baris berulang.
   Future<void> addFailures(List<FailedRecord> list) async {
     if (list.isEmpty) return;
     final db = await database;
-    final batch = db.batch();
-    for (final f in list) {
-      batch.insert('failures', f.toMap());
-    }
-    await batch.commit(noResult: true);
+    await db.transaction((txn) async {
+      for (final f in list) {
+        final existing = await txn.query(
+          'failures',
+          where: 'file_path = ?',
+          whereArgs: [f.filePath],
+          limit: 1,
+        );
+        if (existing.isNotEmpty) {
+          final id = existing.first['id'] as int;
+          await txn.update(
+            'failures',
+            _failureMap(f),
+            where: 'id = ?',
+            whereArgs: [id],
+          );
+        } else {
+          await txn.insert('failures', _failureMap(f));
+        }
+      }
+    });
+  }
+
+  Map<String, dynamic> _failureMap(FailedRecord f) => f.toMap()..remove('id');
+
+  /// B04: buang rekod gagal bagi laluan yang BERJAYA dihantar semula —
+  /// dipanggil apabila batch berjaya (retry membersihkan baris lamanya).
+  /// Dijalankan dalam transaksi.
+  Future<void> deleteFailuresByPaths(Iterable<String> paths) async {
+    final db = await database;
+    final list = paths.toSet().toList();
+    if (list.isEmpty) return;
+    await db.transaction((txn) async {
+      final batch = txn.batch();
+      for (final path in list) {
+        batch.delete('failures', where: 'file_path = ?', whereArgs: [path]);
+      }
+      await batch.commit(noResult: true);
+    });
   }
 
   Future<List<FailedRecord>> failures({int? sessionId, int limit = 1000}) async {
@@ -138,13 +240,31 @@ class DatabaseService {
     await db.delete('failures', where: 'id = ?', whereArgs: [id]);
   }
 
+  /// B24: hapus berbilang kegagalan dalam SATU transaksi.
+  Future<void> deleteFailures(Iterable<int> ids) async {
+    final db = await database;
+    final list = ids.toList();
+    if (list.isEmpty) return;
+    await db.transaction((txn) async {
+      final batch = txn.batch();
+      for (final id in list) {
+        batch.delete('failures', where: 'id = ?', whereArgs: [id]);
+      }
+      await batch.commit(noResult: true);
+    });
+  }
+
   Future<void> clearFailures() async {
     final db = await database;
     await db.delete('failures');
   }
 
   Future<void> clearAll() async {
-    await clearFailures();
-    await clearSessions();
+    // B24: transaksi tunggal — kedua-dua jadual sekali gus.
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('failures');
+      await txn.delete('sessions');
+    });
   }
 }

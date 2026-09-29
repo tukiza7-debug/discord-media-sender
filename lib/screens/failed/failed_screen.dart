@@ -135,9 +135,18 @@ class _FailedScreenState extends ConsumerState<FailedScreen> {
     final items = [for (final f in list) f.toMediaItem()];
     final upload = ref.read(uploadControllerProvider.notifier);
     final config = ref.read(configProvider);
-    final result = await upload.start(items: items, config: config, caption: '');
-    if (context.mounted && result != null) {
-      showAppSnackBar(context, result, success: !result.startsWith('Failed'));
+    // B04: enjin menghapuskan rekod gagal lama secara automatik apabila
+    // batch berjaya (onBatchSucceeded) — gagal semula dikemas kini (bukan
+    // pendua). Cukup muat semula senarai di sini.
+    final result = await upload.start(
+      items: items,
+      config: config,
+      caption: '',
+      maxFileMB: ref.read(settingsProvider).maxFileMB,
+    );
+    if (context.mounted) {
+      showAppSnackBar(context, result.message,
+          success: result.isGood, error: !result.isGood);
     }
     ref.read(failedProvider.notifier).load();
   }
@@ -258,9 +267,15 @@ class _FailedCard extends ConsumerWidget {
   Future<void> _retryOne(BuildContext context, WidgetRef ref, FailedRecord f) async {
     final upload = ref.read(uploadControllerProvider.notifier);
     final config = ref.read(configProvider);
-    final result = await upload.start(items: [f.toMediaItem()], config: config, caption: '');
-    if (context.mounted && result != null) {
-      showAppSnackBar(context, result, success: !result.startsWith('Failed'));
+    final result = await upload.start(
+      items: [f.toMediaItem()],
+      config: config,
+      caption: '',
+      maxFileMB: ref.read(settingsProvider).maxFileMB,
+    );
+    if (context.mounted) {
+      showAppSnackBar(context, result.message,
+          success: result.isGood, error: !result.isGood);
     }
     ref.read(failedProvider.notifier).load();
   }

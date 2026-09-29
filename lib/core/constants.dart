@@ -9,10 +9,18 @@ class AppLimits {
   static const int maxRateLimitWaits = 6;
   static const int responseLogCapacity = 500;
 
-  /// Had saiz per jenis fail (dilaksanakan pada sisi aplikasi).
-  static const int maxImageBytes = 25 * 1024 * 1024; // 25 MB
-  static const int maxVideoBytes = 1024 * 1024 * 1024; // 1 GB
+  /// PRESET had saiz muat naik per fail (MB) — mengikut tier server Discord:
+  /// 10 MB (lama), 20 MB (server tanpa boost, sejak 13 Ogo 2026),
+  /// 50 MB (Boost Level 2), 100 MB (Boost Level 3).
+  /// Pengguna pilih had aktif dalam Tetapan (lalai 20 MB).
+  static const List<int> fileSizePresetsMB = [10, 20, 50, 100];
+  static const int defaultMaxFileMB = 20;
+
+  /// Had saiz ZIP INPUT (berasingan daripada had muat naik).
   static const int maxZipBytes = 1024 * 1024 * 1024; // 1 GB
+
+  /// Had jumlah TIDARAMPAT selepas ekstrak ZIP (pertahanan zip-bomb).
+  static const int maxZipExtractBytes = 2 * 1024 * 1024 * 1024; // 2 GB
 
   /// Backoff eksponensial antara percubaan semula (saat).
   static const List<int> retryBackoffSeconds = [1, 2, 4];
@@ -21,11 +29,23 @@ class AppLimits {
   /// Mencegah sesi tergantung selamanya apabila sambungan tersadai.
   static const Duration batchAttemptTimeout = Duration(minutes: 15);
 
+  /// Anggaran throughput muat naik minimum (200 KB/s) untuk penskalaan
+  /// masa-luar percubaan: batch besar diberi masa yang lebih panjang.
+  static const int attemptTimeoutMinKBps = 200;
+
   /// Muat naik dianggap tersadai jika tiada bait terhantar selama ini.
   static const Duration uploadStallTimeout = Duration(seconds: 90);
 
   /// Jeda minimum antara dua kemas kini progres UI (kurangkan beban rebuild).
   static const Duration progressThrottle = Duration(milliseconds: 120);
+
+  /// Tunggu minimum/maksimum semasa menghormati 429 (Retry-After).
+  static const int minRateLimitWaitMs = 250;
+  static const int maxRateLimitWaitMs = 10 * 60 * 1000; // 10 minit
+
+  /// Mentions dimatikan secara lalai dalam kapsyen (elak mass-mention);
+  /// tukar kepada true untuk membenarkan @everyone/@role/@user.
+  static const bool allowCaptionMentions = false;
 }
 
 /// Asas API Discord (versi v10).

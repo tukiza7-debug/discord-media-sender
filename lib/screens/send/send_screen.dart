@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/app_theme.dart';
+import '../../core/validators.dart';
 import '../../models/models.dart';
 import '../../providers/config_providers.dart';
 import '../../providers/history_providers.dart';
@@ -253,16 +254,46 @@ class _MediaGridView extends StatelessWidget {
 
 // -------------------------------------------------------------- caption
 
-class CaptionField extends ConsumerWidget {
+/// B13: TextField kapsyen kini guna TextEditingController yang diselaraskan
+/// dengan captionProvider — teks TIDAK hilang lagi apabila layout dibina
+/// semula (putaran potret↔landscape) sedangkan provider masih menyimpannya.
+class CaptionField extends ConsumerStatefulWidget {
   const CaptionField({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CaptionField> createState() => _CaptionFieldState();
+}
+
+class _CaptionFieldState extends ConsumerState<CaptionField> {
+  late final TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: ref.read(captionProvider));
+    // Provider diubah dari luar (cth. dikosongkan selepas hantar selesai)
+    // → selaraskan medan teks.
+    ref.listenManual(captionProvider, (prev, next) {
+      if (next != _ctrl.text) {
+        _ctrl.text = next;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SectionLabel('Message (optional)'),
         TextField(
+          controller: _ctrl,
           maxLength: 2000,
           minLines: 3,
           maxLines: 5,
@@ -305,7 +336,9 @@ class _BottomBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (running) return const _RunningBar();
-    final canSend = readyCount > 0;
+    // B11: Send dilumpuhkan sehingga konfigurasi SAH (bukan sekadar isi).
+    final configOk = configValid(ref.read(configProvider));
+    final canSend = readyCount > 0 && configOk;
     final upload = ref.watch(uploadControllerProvider);
 
     final button = SizedBox(
@@ -350,13 +383,23 @@ class _BottomBar extends ConsumerWidget {
   }
 
   List<Widget> _lastResult(BuildContext context, UploadUiState upload) {
+    // B17: ikon/warna diterbitkan daripada kind — dulu SENTIASA tick hijau
+    // walaupun sesi gagal/dibatalkan.
+    final kind = upload.lastFinishedKind;
+    final (icon, color) = switch (kind) {
+      SendResultKind.success => (LucideIcons.checkCircle, AppColors.success),
+      SendResultKind.partial => (LucideIcons.alertCircle, AppColors.warning),
+      SendResultKind.failed => (LucideIcons.xCircle, AppColors.danger),
+      SendResultKind.cancelled => (LucideIcons.ban, AppColors.textFaint),
+      _ => (LucideIcons.info, AppColors.info),
+    };
     return [
       Padding(
         padding: const EdgeInsets.only(bottom: 10),
         child: Row(
           children: [
             const SizedBox(width: 4),
-            Icon(LucideIcons.checkCircle, size: 15, color: AppColors.success),
+            Icon(icon, size: 15, color: color),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -379,21 +422,34 @@ class _BottomBar extends ConsumerWidget {
     final items = ref.read(mediaListProvider);
     final caption = ref.read(captionProvider);
 
-    if (!config.readyToSend) {
-      showAppSnackBar(context, 'Complete the configuration first (webhook URL / bot token).',
+    if (!config.readyToSend || !configValid(config)) {
+      showAppSnackBar(context, 'Complete the configuration first (valid webhook URL / bot token).',
           error: true);
       return;
     }
 
     final controller = ref.read(uploadControllerProvider.notifier);
-    final result = await controller.start(items: items, config: config, caption: caption);
+    final result = await controller.start(
+      items: items,
+      config: config,
+      caption: caption,
+      maxFileMB: ref.read(settingsProvider).maxFileMB,
+    );
 
     // Segar semula sejarah & gagal.
     ref.read(historyProvider.notifier).load();
     ref.read(failedProvider.notifier).load();
 
-    if (context.mounted && result != null) {
-      showAppSnackBar(context, result, success: !result.startsWith('Failed'));
+    // B17: warna snackbar daripada kind (bukan startsWith('Failed')).
+    if (context.mounted) {
+      showAppSnackBar(context, result.message,
+          success: result.isGood, error: !result.isGood);
+    }
+    // B13: kosongkan kapsyen selepas sesi selesai (tiada hantar berganda
+    // dengan teks lama). Batal → kapsyen dikekal untuk hantar semula.
+    if (result.kind != SendResultKind.rejected &&
+        result.kind != SendResultKind.cancelled) {
+      ref.read(captionProvider.notifier).state = '';
     }
   }
 }
@@ -477,7 +533,10 @@ class _RunningBar extends ConsumerWidget {
                 final ok = await confirmDialog(
                   context,
                   title: 'Cancel sending?',
-                  message: 'Files that were not sent will be marked as failed/cancelled.',
+                  // B05: teks kini sepadan dengan kelakian sebenar.
+                  message: 'Batches that already failed stay marked as failed. '
+                      'Files that were not sent will be marked as cancelled '
+                      'and can be sent again.',
                   confirmLabel: 'Cancel Send',
                 );
                 if (ok) await controller.cancel();

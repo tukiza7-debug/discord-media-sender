@@ -336,11 +336,19 @@ class _SessionDetail extends ConsumerWidget {
     final items = [for (final f in failures) f.toMediaItem()];
     final upload = ref.read(uploadControllerProvider.notifier);
     final config = ref.read(configProvider);
-    final result = await upload.start(items: items, config: config, caption: '');
-    if (context.mounted && result != null) {
-      showAppSnackBar(context, result, success: !result.startsWith('Failed'));
+    // B04: rekod gagal lama dibersihkan automatik oleh onBatchSucceeded.
+    final result = await upload.start(
+      items: items,
+      config: config,
+      caption: '',
+      maxFileMB: ref.read(settingsProvider).maxFileMB,
+    );
+    if (context.mounted) {
+      showAppSnackBar(context, result.message,
+          success: result.isGood, error: !result.isGood);
     }
     ref.read(failedProvider.notifier).load();
+    ref.read(historyProvider.notifier).load();
   }
 }
 

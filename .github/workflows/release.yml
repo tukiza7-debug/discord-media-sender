@@ -45,18 +45,29 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/wrapper/gradle-wrapper.properties', 'pubspec.lock') }}
+          # B08: lalui wrapper sebenar ialah android/gradle/wrapper/…
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties', 'pubspec.lock') }}
           restore-keys: gradle-${{ runner.os }}-
 
       - name: Tentukan nombor versi
         id: ver
+        env:
+          # B08: input boleh digunakan secara VEKTOR SUNGGKAN shell —
+          # masuk melalui env (bukan interpolasi terus) dan DISAHKAN
+          # terhadap corak versi sebelum digunakan.
+          RAW_INPUT: ${{ github.event.inputs.version }}
+          RAW_REF: ${{ github.ref_name }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            RAW="${{ github.event.inputs.version }}"
+            RAW="$RAW_INPUT"
           else
-            RAW="${{ github.ref_name }}"
+            RAW="$RAW_REF"
           fi
           RAW="${RAW#v}"
+          if ! echo "$RAW" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.]+)?$'; then
+            echo "::error::Versi tidak sah: '$RAW'. Dijangka bentuk X.Y.Z[.tag/-tag]."
+            exit 1
+          fi
           echo "version=$RAW" >> "$GITHUB_OUTPUT"
           echo "Versi release: $RAW"
 
@@ -77,28 +88,39 @@ jobs:
           sed -i -E "s/^version:.*$/version: ${V}+${{ github.run_number }}/" pubspec.yaml
           grep -E '^version:' pubspec.yaml
 
-      - name: Sediakan keystore daripada secrets (jika ada)
+      - name: Sediakan keystore daripada secrets (WAJIB untuk release)
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > android/app/upload-keystore.jks
-            cat > android/key.properties <<EOF
+          # B08: release WAJIB kunci stabil — debug key pada runner GitHub
+          # dijana baharu setiap VM (tandatangan berbeza setiap build →
+          # 'App not installed / signature conflict'). Fallback debug
+          # HANYA dibenarkan pada build-apk.yml (build dev/PR).
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::KEYSTORE_BASE64 tiada dalam secrets. Release mesti ditandatangani dengan kunci stabil — tambah KEYSTORE_BASE64, KEY_ALIAS, KEY_PASSWORD, STORE_PASSWORD pada repo secrets."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/upload-keystore.jks
+          cat > android/key.properties <<EOF
           storeFile=upload-keystore.jks
           keyAlias=$KEY_ALIAS
           keyPassword=$KEY_PASSWORD
           storePassword=$STORE_PASSWORD
           EOF
-            echo "Keystore release dikesan - APK akan ditandatangan dengan kunci release."
-          else
-            echo "Tiada KEYSTORE_BASE64 - build terus dengan debug signing supaya tetap berjaya."
-          fi
+          echo "Keystore release dikesan - APK akan ditandatangan dengan kunci release."
 
       - name: Dapatkan dependensi
         run: flutter pub get
+
+      # B08: gerbang kualiti sebelum terbit — analisis + ujian WAJIB lulus.
+      - name: Analisis statik
+        run: flutter analyze
+
+      - name: Ujian unit
+        run: flutter test
 
       - name: Bina APK split per ABI
         run: flutter build apk --release --split-per-abi --build-name=${{ steps.ver.outputs.version }} --build-number=${{ github.run_number }}

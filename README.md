@@ -23,12 +23,12 @@ Fail `SHA256SUMS.txt` mengandungi checksum untuk pengesahan integriti.
 ## Ciri-ciri
 
 - **Dua mod hantaran** — Webhook (URL + nama bot + avatar) atau Bot (token + channel ID, pemilih channel dari senarai server, cipta channel baru). Uji Sambungan untuk kedua-dua mod. Konfigurasi disimpan dalam **flutter_secure_storage**.
-- **Pilih media** — gambar/video (PNG, JPG, GIF, WebP, BMP, AVIF; MP4, WebM, MOV, MKV, AVI, MPEG, OGG, 3GP), **folder penuh** (imbas semua subfolder), dan **ZIP** (diekstrak automatik). Maksimum 5,000 fail; gambar 25MB, video 1GB (ditanda & dilangkau dengan sebab).
+- **Pilih media** — gambar/video (PNG, JPG, GIF, WebP, BMP, AVIF; MP4, WebM, MOV, MKV, AVI, MPEG, OGG, 3GP), **folder penuh** (imbas semua subfolder), dan **ZIP** (diekstrak automatik). Maksimum 5,000 fail. Had saiz per fail boleh ditetapkan dalam Tetapan (10 / 20 / 50 / 100 MB, lalai 20 MB mengikut tier server Discord); fail melebihi had dilangkau dengan sebab jelas.
 - **Bulk send** — kelompok 10 fail/mesej (had Discord), kapsyen maks 2,000 aksara pada batch pertama, pratonton mesej ala Discord.
 - **Progres masa nyata** — bar animasi, kiraan berjaya/gagal, kelajuan, batch semasa, **Jeda/Sambung/Batal**.
 - **Auto-retry 3 kali** dengan backoff eksponensial + hormat rate limit Discord (HTTP 429, `Retry-After`).
 - **Foreground service** — notifikasi progres; hantaran tidak terhenti di latar belakang dan kekal semasa skrin diputar.
-- **Skrin Respons** — log masa nyata setiap permintaan: lencana status HTTP berwarna, masa respons (ms), saiz & kelajuan muat naik, bilangan cubaan, header rate limit, JSON berwarna boleh lipat, penerangan ralat Bahasa Melayu + cadangan penyelesaian, **Salin JSON / Salin cURL** (sentiasa ditapis), kad khas 429 dengan kira detik, penapis chip + carian, mod konsol (monospace), auto-scroll, eksport log .txt/.json.
+- **Skrin Respons** — log masa nyata setiap permintaan: lencana status HTTP berwarna, masa respons (ms), saiz & kelajuan muat naik, bilangan cubaan, header rate limit, JSON berwarna boleh lipat, penerangan ralat dalam Bahasa Inggeris + cadangan penyelesaian, **Salin JSON / Salin cURL** (sentiasa ditapis), kad khas 429 dengan kira detik, penapis chip + carian, mod konsol (monospace), auto-scroll, eksport log .txt/.json.
 - **Sejarah & Gagal** — sesi direkod dalam SQLite (dikumpul ikut tarikh), kegagalan selepas 3 cubaan dipaparkan dengan kod HTTP & mesej, **Cuba Semula** (satu fail / satu sesi / semua), swipe untuk padam, tarik-untuk-muat-semula.
 - **Adaptif penuh** — navigasi bawah (potret) / NavigationRail (landscape), dua lajur di skrin Hantar, master-detail di skrin Respons/Sejarah/Gagal, tetapan orientasi Auto/Potret/Landscape. Semua state dalam Riverpod — tiada data hilang semasa rotasi.
 - **Onboarding 3 skrin** kali pertama (cara dapat webhook, bot token, pilih folder), ikon & splash tersuai.
@@ -93,11 +93,11 @@ APK yang sudah terpasang boleh terus dikemas kini:
 
 - `applicationId` (`com.dmsender.discord_media_sender`) tidak berubah antara versi, dan `versionCode` meningkat secara automatik pada setiap build (mengikut nombor run GitHub Actions) — Android akan menerima APK baharu sebagai kemas kini.
 - Pasang APK versi baharu terus di atas yang lama (data & tetapan kekal).
-- **Ambil perhatian**: selagi tiada keystore secrets ditetapkan, semua APK ditandatangani dengan debug key yang sama — kemas kini berjalan lancar. Sekiranya anda kemudian menambah `KEYSTORE_BASE64`, APK release akan bertandatangan berbeza; buang app lama dahulu sebelum pasang versi release, atau rujuk bahagian tandatangan di bawah.
+- **Ambil perhatian**: APK **Release** WAJIB ditandatangani dengan kunci stabil (`KEYSTORE_BASE64` dst. dalam repo secrets) — workflow Release akan GAGAL dengan ralat jelas sekiranya keystore tiada (debug key pada runner dijana baharu setiap VM dan menyebabkan "App not installed / signature conflict"). Build dev/PR (`Build APK`) mungkin debug-signed dan dilabel sedemikian dalam `BUILD_INFO.txt`; jangan edarkannya.
 
-## Tandatangan APK (Pilihan)
+## Tandatangan APK (WAJIB untuk Release)
 
-Secara lalai, APK release ditandatangani dengan debug key supaya build sentiasa berjaya. Untuk tandatangan release:
+APK release hanya dibina sekiranya keystore stabil disediakan dalam repo secrets (debug fallback dinyahaktifkan untuk workflow Release). Cara menyediakannya:
 
 ### 1. Jana keystore
 

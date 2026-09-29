@@ -14,7 +14,7 @@ class MediaListNotifier extends StateNotifier<List<MediaItem>> {
   int get readyCount => state.where((m) => m.status.canSend).length;
 
   /// Tambah item; elak duplikasi ikut laluan; hormat had 5,000 fail.
-  void addAll(List<MediaItem> items, {String? info}) {
+  void addAll(List<MediaItem> items) {
     if (items.isEmpty) return;
     final existingPaths = state.map((m) => m.path).toSet();
     final merged = <MediaItem>[...state];
@@ -36,6 +36,12 @@ class MediaListNotifier extends StateNotifier<List<MediaItem>> {
     state = state.where((m) => !s.contains(m.path)).toList(growable: false);
   }
 
+  /// B22: buang item yang sudah 'sent' daripada senarai (tindakan
+  /// 'Clear sent' pada zon media).
+  void clearSent() {
+    state = state.where((m) => m.status != MediaStatus.sent).toList(growable: false);
+  }
+
   void clearAll() => state = const [];
 
   void markStatusByPath(Iterable<String> paths, MediaStatus status) {
@@ -47,21 +53,22 @@ class MediaListNotifier extends StateNotifier<List<MediaItem>> {
   }
 
   /// Tindakan pilih: Media / Folder / ZIP.
-  Future<String?> pick(PickAction action) async {
+  /// B02: had saiz aktif dihantar dari Tetapan (maxFileMB).
+  Future<String?> pick(PickAction action, {required int maxFileMB}) async {
     final service = MediaService.instance;
     MediaPickResult res;
     switch (action) {
       case PickAction.files:
-        res = await service.pickMediaFiles();
+        res = await service.pickMediaFiles(maxFileMB: maxFileMB);
         break;
       case PickAction.folder:
-        res = await service.pickFolder();
+        res = await service.pickFolder(maxFileMB: maxFileMB);
         break;
       case PickAction.zip:
-        res = await service.pickZip();
+        res = await service.pickZip(maxFileMB: maxFileMB);
         break;
     }
-    addAll(res.items, info: res.info);
+    addAll(res.items);
     return _resultMessage(res);
   }
 

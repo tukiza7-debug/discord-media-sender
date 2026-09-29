@@ -6,9 +6,9 @@ import 'package:dio/dio.dart';
 import '../core/constants.dart';
 import '../models/models.dart';
 import 'discord_api.dart';
-import 'foreground_manager.dart';
+import '../core/wait_utils.dart';
 
-/// Callback bagi kegagalan akhir satu batch (selepas 3 cubaan).
+/// Callback bagi kegagalan akhir satu batch (selepas cubaan habis).
 typedef OnBatchFailed = void Function(
   List<MediaItem> batch,
   int batchIndex,
@@ -17,24 +17,28 @@ typedef OnBatchFailed = void Function(
   String? errorMessage,
 );
 
+/// Callback bagi batch yang BERJAYA (B04) — pengawal guna ini untuk
+/// membuang rekod gagal lama & menanda item 'sent'.
+typedef OnBatchSucceeded = void Function(List<MediaItem> batch);
+
 /// Callback kemas kini notifikasi foreground.
 typedef OnForegroundUpdate = void Function(int batch, int totalBatches, int percent);
 
 /// Enjin hantaran pukal:
-/// - kelompok 10 fail/mesej (had Discord)
-/// - auto-retry 3 kali dengan backoff eksponensial
-/// - hormati 429 (Retry-After) melalui DiscordApi
+/// - kelompok 10 fail/mesej (had Discord) DAN had bait terkumpul (B02)
+/// - auto-retry 3 kali dgn backoff eksponensial — HANYA bagi ralat yang
+///   berbaloi (rangkaian/5xx/429); ralat kekal (400/401/403/404/413,
+///   kod Discord 40005/50013/50001/10003/10015) gagal pantas (B02)
+/// - hormati 429 (Retry-After dalam SAAT — B01) melalui DiscordApi
 /// - Jeda / Sambung / Batal pada bila-bila masa
 /// - emisi progres masa nyata melalui stream (per bait, ditebat)
-/// - PENGAWAL MASA LUAR: percubaan gantung/tersadai dimatikan sendiri —
-///   sesi TIDAK PERNAH tergantung selamanya lagi
-/// - run() TIDAK PERNAH melempar pengecualian: kemalangan apa pun menjadi
-///   status 'failed'/'cancelled' supaya sesi sentiasa ditamatkan dengan
-///   betul dalam sejarah (tiada lagi zombi "running" selepas app ditutup)
+/// - PENGAWAL MASA LUAR: percubaan gantung/tersadai dimatikan sendiri;
+///   masa-luar percubaan DISKALAKAN ikut saiz batch (B02)
+/// - run() TIDAK PERNAH melempar pengecualian
 class UploadEngine {
   UploadEngine({
     DiscordApi? api,
-    this.attemptTimeout = AppLimits.batchAttemptTimeout,
+    this.attemptTimeout,
     this.stallTimeout = AppLimits.uploadStallTimeout,
     this.maxRetries = AppLimits.maxRetries,
     List<int>? backoffSeconds,
@@ -44,8 +48,9 @@ class UploadEngine {
 
   final DiscordApi _api;
 
-  /// Masa luar maksimum SATU percubaan batch (pengawal masa luar).
-  final Duration attemptTimeout;
+  /// Override masa-luar percubaan (ujian). Bila null — diskalakan ikut
+  /// saiz batch (attemptTimeoutFor).
+  final Duration? attemptTimeout;
 
   /// Muat naik dianggap tersadai jika tiada bait terhantar dalam tempoh ini.
   final Duration stallTimeout;
@@ -82,7 +87,8 @@ class UploadEngine {
   void pause() {
     if (!_busy) return;
     _paused = true;
-    _push(state: EngineState.paused, message: 'Paused');
+    // B09: jeda hanya berkesan antara batch — mesej jujur kepada pengguna.
+    _push(state: EngineState.paused, message: 'Pausing after current batch...');
   }
 
   void resume() {
@@ -132,8 +138,17 @@ class UploadEngine {
     _controller?.add(_last);
   }
 
+  /// Status efektif semasa enjin masih memproses (B09): deriving daripada
+  /// flag — cancelling > paused > running — supaya UI tidak terbalik ke
+  /// 'running' sedangkan pengguna sudah tekan Jeda/Batal.
+  EngineState get _effectiveActiveState {
+    if (_cancelRequested) return EngineState.cancelling;
+    if (_paused) return EngineState.paused;
+    return EngineState.running;
+  }
+
   /// Kemas kini progres hidup semasa muat naik — ditebat supaya UI tidak
-  /// dibina beribu- kali sesaat.
+  /// dibina beribu- kali sesaat. B09: status TIDAK dipaksa 'running'.
   void _pushLive({int? currentBatch, int? uploadedBytes, double? speedMBps,
       String? message, bool finalChunk = false}) {
     final now = DateTime.now();
@@ -143,7 +158,7 @@ class UploadEngine {
     }
     _lastLivePush = now;
     _push(
-      state: EngineState.running,
+      state: _effectiveActiveState,
       currentBatch: currentBatch,
       uploadedBytes: uploadedBytes,
       speedMBps: speedMBps,
@@ -165,9 +180,13 @@ class UploadEngine {
     required List<MediaItem> items,
     required SendConfig config,
     String? caption,
-    required void Function(ResponseLogEntry entry) onLog,
     required OnBatchFailed onBatchFailed,
+    OnBatchSucceeded? onBatchSucceeded,
     OnForegroundUpdate? onForegroundUpdate,
+
+    /// B02: had bait kumulatif per kelompok + had saiz per fail
+    /// (daripada tetapan pengguna; lalai 20 MB).
+    int maxBatchBytes = AppLimits.defaultMaxFileMB * 1024 * 1024,
   }) async {
     if (_busy) return 'already-running';
     _busy = true;
@@ -182,9 +201,10 @@ class UploadEngine {
         items: items,
         config: config,
         caption: caption,
-        onLog: onLog,
         onBatchFailed: onBatchFailed,
+        onBatchSucceeded: onBatchSucceeded,
         onForegroundUpdate: onForegroundUpdate,
+        maxBatchBytes: maxBatchBytes,
       );
     } catch (e, st) {
       // Rangka pengaman: kemalangan tidak dijangka TIDAK boleh meninggalkan
@@ -208,19 +228,29 @@ class UploadEngine {
     return status;
   }
 
+  /// Masa-luar SATU percubaan, diskalakan ikut saiz batch (B02):
+  /// max(15 minit, bait / 200 KB/s) — video besar pada talian mudah alih
+  /// perlu masa yang lebih panjang daripada 15 minit statik.
+  static Duration attemptTimeoutFor(int batchBytes) {
+    const floor = AppLimits.batchAttemptTimeout;
+    final seconds = batchBytes ~/ (AppLimits.attemptTimeoutMinKBps * 1024);
+    final scaled = Duration(seconds: seconds);
+    return scaled > floor ? scaled : floor;
+  }
+
   Future<String> _execute({
     required List<MediaItem> items,
     required SendConfig config,
     String? caption,
-    required void Function(ResponseLogEntry entry) onLog,
     required OnBatchFailed onBatchFailed,
+    OnBatchSucceeded? onBatchSucceeded,
     OnForegroundUpdate? onForegroundUpdate,
+    int maxBatchBytes = AppLimits.defaultMaxFileMB * 1024 * 1024,
   }) async {
     _cancelToken = CancelToken();
 
     // Pisahkan fail yang benar-benar wujud pada peranti. Fail hilang tidak
-    // lagi masuk kelompok (dulu: MultipartFile.fromFile melempar pengecualian
-    // dan membunuh enjin secara senyap → sesi zombi "running").
+    // lagi masuk kelompok.
     final wanted = items.where((m) => m.status.canSend).toList(growable: false);
     final sendable = <MediaItem>[];
     final missing = <MediaItem>[];
@@ -232,9 +262,25 @@ class UploadEngine {
       }
     }
 
-    final batches = chunkItems(sendable, AppLimits.batchSize);
+    // B02: satu fail yang melebihi had bait = 'oversized' — TIDAK
+    // dihantar langsung (dulu: dihantar, gagal 413, dan dicuba semula 3x).
+    final oversized = <MediaItem>[];
+    final fits = <MediaItem>[];
+    for (final m in sendable) {
+      if (m.sizeBytes > maxBatchBytes) {
+        oversized.add(m);
+      } else {
+        fits.add(m);
+      }
+    }
+
+    // B02: kelompokkan ikut KIRAAN (<=10) DAN jumlah bait (<= had).
+    final (batches, rejectedOversized) =
+        chunkByCountAndBytes(fits, AppLimits.batchSize, maxBatchBytes);
+    oversized.addAll(rejectedOversized);
     final totalFiles = sendable.length + missing.length;
     final totalBytes = sendable.fold<int>(0, (s, f) => s + f.sizeBytes);
+    final maxMB = maxBatchBytes ~/ (1024 * 1024);
 
     _last = UploadProgress(
       state: EngineState.running,
@@ -251,26 +297,43 @@ class UploadEngine {
     _controller!.add(_last);
 
     if (missing.isNotEmpty) {
-      // onBatchFailed dilindungi — ralat DB/callback TIDAK BOLEH membunuh
-      // sesi (dulu: pengecualian tak dijangka menjadikan sesi zombi).
-      try {
-        onBatchFailed(missing, 0, null, null, 'File not found on device');
-      } catch (_) {}
+      _reportFailure(missing, 0, null, null, 'File not found on device',
+          onBatchFailed);
       _push(
         failedFiles: missing.length,
         message:
             '${missing.length} file(s) skipped — not found on device',
       );
     }
+    if (oversized.isNotEmpty) {
+      _reportFailure(
+          oversized,
+          0,
+          413,
+          40005,
+          'File exceeds the $maxMB MB per-upload limit',
+          onBatchFailed);
+      _push(
+        failedFiles: missing.length + oversized.length,
+        message:
+            '${oversized.length} file(s) skipped — exceeds the per-upload size limit',
+      );
+    }
 
     var successFiles = 0;
-    var failedFiles = missing.length;
+    var failedFiles = missing.length + oversized.length;
     var uploadedBytes = 0;
     var activeMs = 0;
     var wasCancelled = false;
 
     for (var b = 0; b < batches.length; b++) {
-      // Tunggu jika dijeda.
+      // B09: blok jeda sebenar — pancarkan status 'paused' sekali.
+      if (_paused && !_cancelRequested) {
+        _push(
+          state: EngineState.paused,
+          message: 'Paused — resume to continue',
+        );
+      }
       while (_paused && !_cancelRequested) {
         await Future<void>.delayed(const Duration(milliseconds: 150));
       }
@@ -282,6 +345,8 @@ class UploadEngine {
       final batch = batches[b];
       final batchBytes = batch.fold<int>(0, (s, f) => s + f.sizeBytes);
       final batchBaseBytes = uploadedBytes;
+      final attemptTimeout =
+          this.attemptTimeout ?? attemptTimeoutFor(batchBytes);
       var attempt = 0;
       var ok = false;
       int? lastCode;
@@ -291,7 +356,7 @@ class UploadEngine {
       while (attempt < maxRetries && !ok && !_cancelRequested) {
         attempt++;
         _push(
-          state: EngineState.running,
+          state: _effectiveActiveState,
           currentBatch: b + 1,
           message: 'Sending batch ${b + 1}/${batches.length}'
               '${attempt > 1 ? ' (attempt $attempt)' : ''}',
@@ -310,7 +375,7 @@ class UploadEngine {
 
         // PENGAWAL MASA LUAR — mematikan percubaan yang:
         //  (a) tersadai: tiada bait terhantar dalam tempoh [stallTimeout], atau
-        //  (b) terlalu lama: melebihi [attemptTimeout] keseluruhan.
+        //  (b) terlalu lama: melebihi masa-luar percubaan utk saiz batch ini.
         final watchdog = Timer.periodic(watchdogTick, (_) {
           final stalled = _attemptUploading &&
               DateTime.now().difference(_lastActivity) > stallTimeout;
@@ -345,6 +410,11 @@ class UploadEngine {
                 finalChunk: total > 0 && sent >= total,
               );
             },
+            // B01: tick semasa tunggu 429 — stall watchdog tidak tercetus.
+            onRateLimitWaitTick: () {
+              _lastActivity = DateTime.now();
+            },
+            isCancelled: () => _cancelRequested,
           );
         } catch (apiErr) {
           // PUNCA BUG LAMA (v1.0.5): ralat rangkaian menyebabkan
@@ -374,7 +444,7 @@ class UploadEngine {
           wasCancelled = true;
         } else if (outcome.cancelled && _watchdogFired) {
           // Dibatalkan PENGAWAL MASA (bukan pengguna) — anggap percubaan
-          // gagal dan cuba semula dengan token baharu.
+          // gagal dan cuba semula dengan token baharu (retryable).
           _watchdogFired = false;
           lastCode = null;
           lastDiscord = null;
@@ -389,12 +459,23 @@ class UploadEngine {
 
         if (wasCancelled) break;
 
+        // B02: gagal pantas bagi ralat KEEKAL — tiada retry, tiada backoff.
+        if (!ok && !outcome.cancelled && !_isRetryable(outcome)) {
+          _push(
+            state: _effectiveActiveState,
+            currentBatch: b + 1,
+            message: 'Failed${lastMsg == null ? '' : ' ($lastMsg)'} — '
+                'not retryable',
+          );
+          break;
+        }
+
         // Backoff eksponensial sebelum cubaan seterusnya (boleh dijeda).
         if (!ok && attempt < maxRetries) {
           final waitS =
               backoffSeconds[(attempt - 1).clamp(0, backoffSeconds.length - 1)];
           _push(
-            state: EngineState.running,
+            state: _effectiveActiveState,
             currentBatch: b + 1,
             message:
                 'Failed${lastMsg == null ? '' : ' ($lastMsg)'}. Retrying in ${waitS}s',
@@ -416,17 +497,18 @@ class UploadEngine {
       if (ok) {
         successFiles += batch.length;
         uploadedBytes += batchBytes;
+        try {
+          onBatchSucceeded?.call(batch);
+        } catch (_) {}
       } else {
         failedFiles += batch.length;
-        // Dilindungi: ralat penulisan rekod gagal tidak boleh mematikan enjin.
-        try {
-          onBatchFailed(batch, b + 1, lastCode, lastDiscord,
-              lastMsg ?? 'Unknown error');
-        } catch (_) {}
+        _reportFailure(
+            batch, b + 1, lastCode, lastDiscord, lastMsg ?? 'Unknown error',
+            onBatchFailed);
       }
 
       _push(
-        state: EngineState.running,
+        state: _effectiveActiveState,
         currentBatch: b + 1,
         successFiles: successFiles,
         failedFiles: failedFiles,
@@ -471,6 +553,37 @@ class UploadEngine {
     return status;
   }
 
+  /// B02: ralat yang BERBALOI dicuba semula — rangkaian, masa-luar,
+  /// 5xx, dan 429 selepas menunggu. Ralat kekeal (400/401/403/404/413,
+  /// kod Discord 40005/50013/50001/10003/10015) TIDAK.
+  static bool _isRetryable(BatchOutcome o) {
+    final code = o.httpCode;
+    if (code == null) return true; // ralat rangkaian / tanpa respons
+    if (code == 429) return true;
+    if (code >= 500) return true;
+    const permanentHttp = {400, 401, 403, 404, 413};
+    if (permanentHttp.contains(code)) return false;
+    const permanentDiscord = {40005, 50013, 50001, 10003, 10015};
+    if (o.discordCode != null && permanentDiscord.contains(o.discordCode)) {
+      return false;
+    }
+    return true; // kod lain — konservatif: cuba semula
+  }
+
+  /// Lapor kegagalan batch — dilindungi: ralat callback TIDAK BOLEH
+  /// mematikan enjin.
+  static void _reportFailure(
+      List<MediaItem> batch,
+      int batchIndex,
+      int? httpCode,
+      int? discordCode,
+      String message,
+      OnBatchFailed onBatchFailed) {
+    try {
+      onBatchFailed(batch, batchIndex, httpCode, discordCode, message);
+    } catch (_) {}
+  }
+
   static String _briefError(Object e) {
     final s = e.toString();
     return s.length > 120 ? '${s.substring(0, 120)}…' : s;
@@ -485,8 +598,30 @@ class UploadEngine {
     return out;
   }
 
-  /// Semak kewujudan fail sebelum hantar (abaikan yang hilang).
-  static List<MediaItem> existingOnly(List<MediaItem> items) => items
-      .where((m) => m.status.canSend && File(m.path).existsSync())
-      .toList(growable: false);
+  /// B02: kelompokkan ikut KIRAAN (<= maxCount) DAN jumlah bait kumulatif
+  /// (<= maxBytes). Fail tunggal yang lebih besar daripada maxBytes ditolak
+  /// keluar (kembali dalam [rejectedOversized]) supaya tidak pernah dihantar.
+  static (List<List<MediaItem>>, List<MediaItem>) chunkByCountAndBytes(
+      List<MediaItem> items, int maxCount, int maxBytes) {
+    final batches = <List<MediaItem>>[];
+    final rejected = <MediaItem>[];
+    var current = <MediaItem>[];
+    var currentBytes = 0;
+    for (final m in items) {
+      if (m.sizeBytes > maxBytes) {
+        rejected.add(m);
+        continue;
+      }
+      if (current.isNotEmpty &&
+          (current.length >= maxCount || currentBytes + m.sizeBytes > maxBytes)) {
+        batches.add(current);
+        current = <MediaItem>[];
+        currentBytes = 0;
+      }
+      current.add(m);
+      currentBytes += m.sizeBytes;
+    }
+    if (current.isNotEmpty) batches.add(current);
+    return (batches, rejected);
+  }
 }

@@ -31,15 +31,20 @@ class ErrorTranslator {
   };
 
   static const _discordCodes = <int, String>{
-    0: 'General error',
+    // B07a: kod 0 SENGJAHAH tiada di sini — Discord pulangkan {"message":
+    // "401: Unauthorized","code":0} dan seumpamanya; memetakan 0 kepada
+    // 'General error' menutup penerangan HTTP yang lebih tepat.
     10003: 'Channel not found',
     10004: 'Server not found',
+    10015: 'Unknown webhook',
     10057: 'Invalid webhook channel',
     30007: 'Server reached its maximum number of webhooks',
     40005: 'File exceeds the maximum size',
     50001: 'No access to the channel',
     50006: 'Message cannot be empty',
     50013: 'Insufficient permissions',
+    50027: 'Invalid webhook token',
+    50035: 'Invalid form body',
     50046: 'Invalid webhook permissions',
     50074: 'Channel does not support file uploads',
   };
@@ -87,7 +92,12 @@ class ErrorTranslator {
     }
 
     // Discord-specific codes.
-    if (discordCode != null && _discordCodes.containsKey(discordCode)) {
+    // B07a: kod 0 diabaikan — ia hanya mengulangi status HTTP
+    // (cth. {"message":"401: Unauthorized","code":0}); peta HTTP
+    // memberi penerangan yang lebih tepat (cth. 'Invalid token').
+    if (discordCode != null &&
+        discordCode > 0 &&
+        _discordCodes.containsKey(discordCode)) {
       return _forDiscordCode(discordCode);
     }
 
@@ -137,6 +147,14 @@ class ErrorTranslator {
           title: 'Server not found',
           detail: 'The server (guild) does not exist or is not accessible.',
         );
+      case 10015:
+        return const ErrorExplanation(
+          title: 'Unknown webhook',
+          detail: 'This webhook no longer exists (it may have been deleted).',
+          suggestions: [
+            'Create a new webhook and update the URL in the app',
+          ],
+        );
       case 30007:
         return const ErrorExplanation(
           title: 'Webhook limit reached',
@@ -169,6 +187,24 @@ class ErrorTranslator {
           suggestions: [
             'Move the bot role higher in the role list',
             'Allow Send Messages, Attach Files and Embed Links',
+          ],
+        );
+      case 50027:
+        return const ErrorExplanation(
+          title: 'Invalid webhook token',
+          detail: 'The webhook URL/token is wrong or outdated.',
+          suggestions: [
+            'Copy the webhook URL again from Discord',
+            'Re-create the webhook if it was regenerated',
+          ],
+        );
+      case 50035:
+        return const ErrorExplanation(
+          title: 'Invalid form body',
+          detail: 'Discord rejected the request payload as malformed.',
+          suggestions: [
+            'Check the caption for invalid characters',
+            'Make sure the files are valid media files',
           ],
         );
       case 50046:

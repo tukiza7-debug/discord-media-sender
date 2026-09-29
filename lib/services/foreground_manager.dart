@@ -1,13 +1,13 @@
-import 'dart:async';
-import 'dart:io';
-
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
-
-import '../core/constants.dart';
 
 /// Pengurus foreground service — supaya hantaran tidak dihentikan
 /// sistem semasa aplikasi di latar belakang, dan notifikasi progres
 /// sentiasa dipaparkan.
+///
+/// B15: `_running` KINI DISINKRONKAN dengan keadaan servis sebenar
+/// (FlutterForegroundTask.isRunningService) sebelum start/stop — dulu ia
+/// flag setempat yang tidak pernah direkonsiliasi (contoh: app digesap
+/// keluar dari recents → enjin mati tetapi flag masih 'true').
 class ForegroundManager {
   ForegroundManager._();
   static bool _running = false;
@@ -31,7 +31,17 @@ class ForegroundManager {
     );
   }
 
+  /// B15: selaraskan flag tempatan dengan keadaan servis sebenar.
+  /// Gagal (platform tidak sedia, ujian) diabaikan — flag kekal.
+  static Future<void> _reconcile() async {
+    try {
+      final real = await FlutterForegroundTask.isRunningService;
+      if (real != _running) _running = real;
+    } catch (_) {}
+  }
+
   static Future<void> start(String title, String text) async {
+    await _reconcile();
     if (_running) {
       update(title, text);
       return;
@@ -62,6 +72,7 @@ class ForegroundManager {
   }
 
   static Future<void> stop() async {
+    await _reconcile();
     if (!_running) return;
     try {
       await FlutterForegroundTask.stopService();
@@ -76,28 +87,3 @@ class ForegroundManager {
     return 'Batch $batch/$totalBatches • $percent% • Discord Media Sender';
   }
 }
-
-/// Pemuat semula kecil util — dikekal untuk jelas (had backoff).
-int backoffForAttempt(int attempt) {
-  final idx = (attempt - 1).clamp(0, AppLimits.retryBackoffSeconds.length - 1);
-  return AppLimits.retryBackoffSeconds[idx];
-}
-
-/// Tamat masa tunggu yang boleh dijeda/batalkan (dipakai enjin).
-Future<bool> interruptibleWait({
-  required int milliseconds,
-  required bool Function() isPaused,
-  required bool Function() isCancelled,
-  Duration step = const Duration(milliseconds: 100),
-}) async {
-  var waited = 0;
-  while (waited < milliseconds) {
-    if (isCancelled()) return false;
-    if (!isPaused()) waited += step.inMilliseconds;
-    await Future<void>.delayed(step);
-  }
-  return !isCancelled();
-}
-
-/// Akses ringkas fail — dikekal untuk utiliti enjin.
-bool fileExists(String path) => File(path).existsSync();

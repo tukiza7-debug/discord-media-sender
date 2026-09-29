@@ -8,12 +8,15 @@ class HistoryNotifier extends StateNotifier<AsyncValue<List<SessionRecord>>> {
   HistoryNotifier() : super(const AsyncValue.loading());
 
   Future<void> load() async {
-    state = const AsyncValue.loading();
+    // B16: kekalkan data lama semasa memuat semula — 'No history yet'
+    // / spinner tidak lagi berkelip setiap kali senarai disegarkan.
+    state = const AsyncLoading<List<SessionRecord>>().copyWithPrevious(state);
     try {
       final list = await DatabaseService.instance.sessions();
       state = AsyncValue.data(list);
     } catch (e, st) {
-      state = AsyncValue.error(e, st);
+      state = AsyncValue<List<SessionRecord>>.error(e, st)
+          .copyWithPrevious(state);
     }
   }
 
@@ -37,12 +40,14 @@ class FailedNotifier extends StateNotifier<AsyncValue<List<FailedRecord>>> {
   FailedNotifier() : super(const AsyncValue.loading());
 
   Future<void> load() async {
-    state = const AsyncValue.loading();
+    // B16: kekalkan data lama semasa memuat semula (lihat HistoryNotifier).
+    state = const AsyncLoading<List<FailedRecord>>().copyWithPrevious(state);
     try {
       final list = await DatabaseService.instance.failures();
       state = AsyncValue.data(list);
     } catch (e, st) {
-      state = AsyncValue.error(e, st);
+      state = AsyncValue<List<FailedRecord>>.error(e, st)
+          .copyWithPrevious(state);
     }
   }
 

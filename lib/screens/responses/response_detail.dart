@@ -284,9 +284,15 @@ class ResponseDetailView extends ConsumerWidget {
 
     final upload = ref.read(uploadControllerProvider.notifier);
     final config = ref.read(configProvider);
-    final result = await upload.start(items: items, config: config, caption: '');
-    if (context.mounted && result != null) {
-      showAppSnackBar(context, result, success: !result.startsWith('Failed'));
+    // B17: keputusan objek — snackbar ikut kind.
+    final result = await upload.start(
+      items: items,
+      config: config,
+      caption: '',
+    );
+    if (context.mounted) {
+      showAppSnackBar(context, result.message,
+          success: result.isGood, error: !result.isGood);
     }
   }
 }

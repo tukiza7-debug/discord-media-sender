@@ -38,7 +38,8 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/wrapper/gradle-wrapper.properties', 'pubspec.lock') }}
+          # B08: lalui wrapper sebenar ialah android/gradle/wrapper/…
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties', 'pubspec.lock') }}
           restore-keys: gradle-${{ runner.os }}-
 
       - name: Semak versi Flutter
@@ -117,6 +118,12 @@ jobs:
           cp build/app/outputs/flutter-apk/app-x86_64-release.apk      apk_out/DiscordMediaSender-v${V}-x86_64.apk
           {
             echo "Versi build (versionCode): $B"
+            # B08: label jelas — build dev/PR ini mungkin debug-signed.
+            if grep -q "debug signing" apk_signing_audit.txt 2>/dev/null || ! grep -q "certificate SHA-256" apk_signing_audit.txt 2>/dev/null; then
+              echo "Signing: debug-signed (dev build - JANGAN edarkan)"
+            else
+              echo "Signing: release key (stabil)"
+            fi
             cat apk_signing_audit.txt
           } > apk_out/BUILD_INFO.txt
           ls -la apk_out

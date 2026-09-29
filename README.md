@@ -46,7 +46,7 @@ Repositori ini sudah lengkap dengan dua workflow GitHub Actions:
 
 1. **Build APK** (`.github/workflows/build-apk.yml`) — berjalan pada setiap push ke `main`, pull request, atau cetusan manual. Langkah: pub get → `flutter analyze` → `flutter test` → bina 4 APK (universal + 3 ABI) → muat naik sebagai artifact.
 
-2. **Release** (`.github/workflows/release.yml`) — berjalan apabila tag `v*` di-push atau cetusan manual dengan input `version`. Menghasilkan APK bertandatangan + `SHA256SUMS.txt` + GitHub Release dengan nota automatik.
+2. **Release** (`.github/workflows/release.yml`) — berjalan apabila tag `v*` di-push atau cetusan manual dengan input `version`. Menghasilkan APK bertandatangan + `SHA256SUMS.txt` + `VERSION.txt` + GitHub Release yang **notanya diambil daripada `CHANGELOG.md`** (tiada pautan "Full Changelog" — setiap versi menyatakan kemas kininya dengan jelas).
 
 ### Push pertama (contoh)
 
@@ -60,14 +60,40 @@ git push origin main
 
 ### Cipta release baru
 
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
+1. Naikkan versi dalam `pubspec.yaml` (contoh: `version: 1.0.3+1`).
+2. Tambah seksyen baharu dalam `CHANGELOG.md` yang menerangkan kemas kini versi tersebut:
+
+   ```markdown
+   ## [1.0.3] — 2026-10-01
+
+   ### Kemas Kini
+   - <nyatakan kemas kini di sini>
+   ```
+
+3. Commit, kemudian tag dan push:
+
+   ```bash
+   git add .
+   git commit -m "Naik taraf 1.0.3"
+   git tag v1.0.3
+   git push origin main --follow-tags
+   ```
+
+   Atau secara berasingan: `git tag v1.0.3 && git push origin v1.0.3`.
 
 Tunggu workflow Release siap (5-10 minit), kemudian muat turun APK dari tab **Releases**.
 
+> **Penting**: setiap release mesti guna versi baharu — workflow akan GAGAL sekiranya tag versi itu sudah pernah diterbitkan. Jika seksyen `CHANGELOG.md` tiada untuk versi tersebut, nota release automatik dijana daripada senarai commit sejak tag sebelumnya.
+
 Anda juga boleh cetus release manual: tab **Actions → Release → Run workflow**, masukkan versi (contoh `1.2.0`).
+
+## Kemas Kini APK ke Versi Baharu
+
+APK yang sudah terpasang boleh terus dikemas kini:
+
+- `applicationId` (`com.dmsender.discord_media_sender`) tidak berubah antara versi, dan `versionCode` meningkat secara automatik pada setiap build (mengikut nombor run GitHub Actions) — Android akan menerima APK baharu sebagai kemas kini.
+- Pasang APK versi baharu terus di atas yang lama (data & tetapan kekal).
+- **Ambil perhatian**: selagi tiada keystore secrets ditetapkan, semua APK ditandatangani dengan debug key yang sama — kemas kini berjalan lancar. Sekiranya anda kemudian menambah `KEYSTORE_BASE64`, APK release akan bertandatangan berbeza; buang app lama dahulu sebelum pasang versi release, atau rujuk bahagian tandatangan di bawah.
 
 ## Tandatangan APK (Pilihan)
 

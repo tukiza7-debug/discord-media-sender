@@ -22,8 +22,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout kod
+      - name: Checkout kod (penuh — perlu untuk sejarah tag & commit)
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Sediakan Java 17
         uses: actions/setup-java@v4
@@ -112,15 +114,59 @@ jobs:
           cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "release_out/DiscordMediaSender-v${V}-armeabi-v7a.apk"
           cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk   "release_out/DiscordMediaSender-v${V}-arm64-v8a.apk"
           cp build/app/outputs/flutter-apk/app-x86_64-release.apk      "release_out/DiscordMediaSender-v${V}-x86_64.apk"
+          # Rekod versi eksplisit dalam setiap release.
+          printf 'versionName: %s\nversionCode: %s\n' "$V" "${{ github.run_number }}" > release_out/VERSION.txt
           cd release_out
           sha256sum *.apk > SHA256SUMS.txt
           cat SHA256SUMS.txt
+
+      - name: Deraf nota kemas kini (daripada CHANGELOG — TANPA 'Full Changelog')
+        id: notes
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+
+          # 1) Cuba ambil seksyen versi ini daripada CHANGELOG.md.
+          python3 - "$V" > notes.md <<'PY'
+          import re, sys
+          v = sys.argv[1]
+          try:
+              txt = open('CHANGELOG.md', encoding='utf-8').read()
+          except FileNotFoundError:
+              txt = ''
+          pat = r'^## \[?v?' + re.escape(v) + r'\]?[^\n]*\n(.*?)(?=^## \[?v?[0-9]|\Z)'
+          m = re.search(pat, txt, re.M | re.S)
+          print(m.group(1).strip() if m else '')
+          PY
+
+          # 2) Fallback: senarai commit sejak tag sebelumnya.
+          if [ ! -s notes.md ]; then
+            PREV=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+            {
+              echo "## Kemas Kini v$V"
+              echo
+              if [ -n "$PREV" ]; then
+                git log --pretty=format:'- %s (%h)' "$PREV..${GITHUB_REF_NAME}"
+              else
+                echo '- Rilis awal.'
+              fi
+            } > notes.md
+          fi
+
+          # 3) Garis keselamatan: buang HANYA footer gaya GitHub
+          #    ('**Full Changelog**: URL') — sebutan dalam prosa kekal.
+          if grep -qi 'full changelog' notes.md; then
+            sed -i '/^[[:space:]]*\*\*[Ff]ull [Cc]hangelog\*\*/d' notes.md
+          fi
+
+          echo '--- NOTA RELEASE ---'
+          cat notes.md
+          echo '--------------------'
 
       - name: Cipta GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.ver.outputs.version }}
           name: Discord Media Sender v${{ steps.ver.outputs.version }}
+          body_path: notes.md
           files: release_out/*
-          generate_release_notes: true
           fail_on_unmatched_files: true

@@ -1,9 +1,11 @@
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../core/constants.dart';
 import '../models/models.dart';
@@ -53,34 +55,103 @@ class MediaService {
     return extractZip(zipPath);
   }
 
-  /// Pilih folder ('Sent Folder') dan imbas semua subfolder.
+  /// Pilih folder ('Send Folder') dan imbas semua subfolder.
+  ///
+  /// FIX: kebenaran baca media diminta dahulu — tanpanya, Directory.list
+  /// gagal pada Android 10+ dan paparan media tidak muncul. Imbasan
+  /// dijalankan dalam isolate latar supaya UI kekal responsif dan hasil
+  /// dipaparkan serta-merta selepas imbasan selesai.
   Future<MediaPickResult> pickFolder() async {
     final dirPath = await FilePicker.getDirectoryPath(
       dialogTitle: 'Pilih folder media',
     );
     if (dirPath == null) return const MediaPickResult(items: []);
-    return scanFolder(dirPath);
+
+    // Kebenaran baca media (foto & video) diperlukan untuk membaca kandungan
+    // folder melalui laluan fail terus.
+    final granted = await ensureMediaReadPermission();
+    if (!granted) {
+      return const MediaPickResult(
+        items: [],
+        info: 'Kebenaran akses foto & video diperlukan untuk mengimbas '
+            'folder. Benarkan dalam Tetapan sistem → Kebenaran.',
+      );
+    }
+
+    final res = await scanFolder(dirPath);
+    // Maklum balas jelas jika folder tiada media (bukan senyap).
+    if (res.items.isEmpty && res.skipped.isEmpty && res.info == null) {
+      return const MediaPickResult(
+        items: [],
+        info: 'Tiada fail media yang disokong dijumpai dalam folder ini',
+      );
+    }
+    return res;
   }
 
   // ----------------------------------------------------------- scanning
 
   /// Imbas folder secara rekursif dan kumpulkan semua media.
-  MediaPickResult scanFolder(String rootPath) {
+  ///
+  /// Dijalankan dalam isolate berasingan (Isolate.run) supaya folder besar
+  /// tidak membekukan UI; senarai media dipaparkan sebaik imbasan siap.
+  Future<MediaPickResult> scanFolder(String rootPath) {
+    return Isolate.run(() => scanFolderSync(rootPath));
+  }
+
+  /// Pelaksanaan segerak imbasan folder — dipanggil dalam isolate latar.
+  ///
+  /// Laluan rekursif tahan-gagal: subfolder yang tidak boleh dibaca
+  /// dilangkau (tidak menggagalkan keseluruhan imbasan) dan fail tersembunyi
+  /// (bermula dengan '.') diabaikan.
+  static MediaPickResult scanFolderSync(String rootPath) {
+    final dir = Directory(rootPath);
+    if (!dir.existsSync()) {
+      return const MediaPickResult(items: [], info: 'Folder tidak dijumpai');
+    }
+
     final found = <File>[];
-    try {
-      final dir = Directory(rootPath);
-      if (!dir.existsSync()) {
-        return const MediaPickResult(items: [], info: 'Folder tidak dijumpai');
+    var unreadableDirs = 0;
+
+    void walk(Directory d) {
+      List<FileSystemEntity> entities;
+      try {
+        entities = d.listSync(followLinks: false);
+      } catch (_) {
+        unreadableDirs++;
+        return;
       }
-      final entities = dir.listSync(recursive: true, followLinks: false);
       for (final e in entities) {
-        if (e is File && MediaCatalog.isSupported(e.uri.pathSegments.last)) {
-          found.add(e);
+        try {
+          if (e is Directory) {
+            walk(e);
+          } else if (e is File) {
+            final name = e.uri.pathSegments.last;
+            if (name.startsWith('.')) continue; // fail tersembunyi
+            if (MediaCatalog.isSupported(name)) found.add(e);
+          }
+        } catch (_) {
+          // Entri tidak boleh diakses — langkau sahaja.
         }
       }
-    } catch (err) {
-      return MediaPickResult(items: const [], info: 'Gagal mengimbas folder: $err');
     }
+
+    walk(dir);
+
+    // Jika folder akar sendiri tidak boleh dibaca, kemungkinan besar
+    // kebenaran sistem belum diberikan — beri mesej khusus.
+    if (found.isEmpty && unreadableDirs > 0) {
+      try {
+        dir.listSync(followLinks: false);
+      } catch (_) {
+        return const MediaPickResult(
+          items: [],
+          info: 'Folder tidak dapat dibaca. Semak kebenaran akses storan '
+              'aplikasi dalam Tetapan sistem.',
+        );
+      }
+    }
+
     found.sort((a, b) => a.path.toLowerCase().compareTo(b.path.toLowerCase()));
     return _validate(found.map(_fromFile).toList());
   }
@@ -130,19 +201,19 @@ class MediaService {
 
   // -------------------------------------------------------- validation
 
-  MediaFile _fromPlatform(PlatformFile f) => MediaFile(
+  static MediaFile _fromPlatform(PlatformFile f) => MediaFile(
         path: f.path ?? '',
         name: f.name,
         sizeBytes: f.lengthSync() ?? 0,
       );
 
-  MediaFile _fromFile(File f) => MediaFile(
+  static MediaFile _fromFile(File f) => MediaFile(
         path: f.path,
         name: f.uri.pathSegments.last,
         sizeBytes: f.lengthSync(),
       );
 
-  MediaPickResult _validate(List<MediaFile> files, {String? context}) {
+  static MediaPickResult _validate(List<MediaFile> files, {String? context}) {
     final items = <MediaItem>[];
     final skipped = <String>[];
 
@@ -177,7 +248,7 @@ class MediaService {
     );
   }
 
-  MediaItem _item(MediaFile f, MediaStatus status, String? note) {
+  static MediaItem _item(MediaFile f, MediaStatus status, String? note) {
     final type = MediaCatalog.isVideo(f.name)
         ? MediaType.video
         : (MediaCatalog.isImage(f.name) ? MediaType.image : MediaType.other);
@@ -206,4 +277,29 @@ class MediaFile {
   final String path;
   final String name;
   final int sizeBytes;
+}
+
+/// Minta kebenaran baca media (diperlukan untuk imbasan folder).
+///
+/// Android 13+: READ_MEDIA_IMAGES / READ_MEDIA_VIDEO (dan akses separa
+/// 'limited' pada Android 14+ dianggap cukup).
+/// Android 12 ke bawah: READ_EXTERNAL_STORAGE.
+/// Meminta ketiga-tiga sekali gus adalah selamat: OS akan hanya papar
+/// dialog bagi kebenaran yang relevan pada versi peranti tersebut.
+Future<bool> ensureMediaReadPermission() async {
+  // Bukan platform mudah alih (ujian/desktop): tiada kebenaran diperlukan.
+  if (!Platform.isAndroid && !Platform.isIOS) return true;
+
+  final results = await [
+    Permission.photos,
+    Permission.videos,
+    Permission.storage,
+  ].request();
+
+  bool cukup(PermissionStatus? s) =>
+      s == PermissionStatus.granted || s == PermissionStatus.limited;
+
+  return cukup(results[Permission.photos]) ||
+      cukup(results[Permission.videos]) ||
+      cukup(results[Permission.storage]);
 }

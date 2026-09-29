@@ -62,7 +62,18 @@ class MediaListNotifier extends StateNotifier<List<MediaItem>> {
         break;
     }
     addAll(res.items, info: res.info);
-    return res.info ?? (res.skipped.isNotEmpty ? res.skipped.join('\n') : null);
+    return _resultMessage(res);
+  }
+
+  /// Bina mesej ringkas untuk snackbar — senarai panjang 'skipped'
+  /// dirumuskan supaya tidak memenuhi skrin.
+  String? _resultMessage(MediaPickResult res) {
+    if (res.info != null && res.info!.isNotEmpty) return res.info;
+    if (res.skipped.isEmpty) return null;
+    if (res.skipped.length <= 3) return res.skipped.join('\n');
+    final lagi = res.skipped.length - 3;
+    return '${res.skipped.length} fail dilangkau:\n'
+        '${res.skipped.take(3).join('\n')}\n… dan $lagi lagi';
   }
 }
 
@@ -70,6 +81,11 @@ enum PickAction { files, folder, zip }
 
 final mediaListProvider =
     StateNotifierProvider<MediaListNotifier, List<MediaItem>>((ref) => MediaListNotifier());
+
+/// True semasa dialog pilih / imbasan folder / ekstrak ZIP sedang berjalan.
+/// Digunakan untuk memaparkan penunjuk 'Mengimbas…' serta-merta dan
+/// melumpuhkan butang pilih supaya tidak ditekan dua kali.
+final mediaScanBusyProvider = StateProvider<bool>((ref) => false);
 
 /// Kapsyen pilihan (maks 2000 aksara).
 final captionProvider = StateProvider<String>((ref) => '');

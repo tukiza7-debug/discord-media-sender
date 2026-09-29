@@ -20,6 +20,7 @@ class MediaZone extends ConsumerWidget {
     final items = ref.watch(mediaListProvider);
     final ready = items.where((m) => m.status.canSend).length;
     final skipped = items.length - ready;
+    final busy = ref.watch(mediaScanBusyProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -33,48 +34,91 @@ class MediaZone extends ConsumerWidget {
                     minimumSize: const Size(48, 36),
                     foregroundColor: AppColors.danger,
                   ),
-                  onPressed: () async {
-                    final ok = await confirmDialog(
-                      context,
-                      title: 'Kosongkan semua?',
-                      message: '${items.length} fail akan dibuang daripada senarai.',
-                      confirmLabel: 'Kosongkan',
-                    );
-                    if (ok) ref.read(mediaListProvider.notifier).clearAll();
-                  },
+                  onPressed: busy
+                      ? null
+                      : () async {
+                          final ok = await confirmDialog(
+                            context,
+                            title: 'Kosongkan semua?',
+                            message:
+                                '${items.length} fail akan dibuang daripada senarai.',
+                            confirmLabel: 'Kosongkan',
+                          );
+                          if (ok) ref.read(mediaListProvider.notifier).clearAll();
+                        },
                   icon: const Icon(LucideIcons.trash2, size: 14),
                   label: const Text('Kosongkan'),
                 ),
         ),
-        Row(
-          children: [
-            Expanded(
-              child: _PickAction(
-                icon: LucideIcons.image,
-                label: 'Media',
-                hint: 'Gambar / video',
-                onTap: () => _pick(context, ref, PickAction.files),
-              ),
+        // Butang dilumpuhkan & dimalapkan semasa imbasan berjalan.
+        AnimatedOpacity(
+          duration: AppMotion.fast,
+          opacity: busy ? 0.55 : 1.0,
+          child: IgnorePointer(
+            ignoring: busy,
+            child: Row(
+              children: [
+                Expanded(
+                  child: _PickAction(
+                    icon: LucideIcons.image,
+                    label: 'Media',
+                    hint: 'Gambar / video',
+                    onTap: () => _pick(context, ref, PickAction.files),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: _PickAction(
+                    icon: LucideIcons.folder,
+                    label: 'Folder',
+                    hint: 'Semua subfolder',
+                    onTap: () => _pick(context, ref, PickAction.folder),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: _PickAction(
+                    icon: LucideIcons.fileArchive,
+                    label: 'ZIP',
+                    hint: 'Ekstrak automatik',
+                    onTap: () => _pick(context, ref, PickAction.zip),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: _PickAction(
-                icon: LucideIcons.folder,
-                label: 'Folder',
-                hint: 'Semua subfolder',
-                onTap: () => _pick(context, ref, PickAction.folder),
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: _PickAction(
-                icon: LucideIcons.fileArchive,
-                label: 'ZIP',
-                hint: 'Ekstrak automatik',
-                onTap: () => _pick(context, ref, PickAction.zip),
-              ),
-            ),
-          ],
+          ),
+        ),
+        // Penunjuk segera: muncul terus selepas folder dipilih, sebelum
+        // senarai media siap diimbas — paparan tidak lagi 'tergantung'.
+        AnimatedSize(
+          duration: AppMotion.fast,
+          curve: AppMotion.ease,
+          alignment: Alignment.topLeft,
+          child: busy
+              ? Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.sm),
+                  child: Row(
+                    children: [
+                      const SizedBox(
+                        width: 15,
+                        height: 15,
+                        child: CircularProgressIndicator(strokeWidth: 2.2),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Mengimbas media… folder besar mungkin mengambil masa sebentar.',
+                          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : const SizedBox(width: double.infinity),
         ),
         if (items.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.md),
@@ -102,8 +146,20 @@ class MediaZone extends ConsumerWidget {
   Future<void> _pick(BuildContext context, WidgetRef ref, PickAction action) async {
     HapticFeedbackHelper.light();
     final notifier = ref.read(mediaListProvider.notifier);
+    final busy = ref.read(mediaScanBusyProvider.notifier);
     final messenger = ScaffoldMessenger.of(context);
-    final info = await notifier.pick(action);
+
+    busy.state = true; // penunjuk 'Mengimbas…' muncul serta-merta
+    String? info;
+    try {
+      info = await notifier.pick(action);
+    } catch (err) {
+      // Jangan biarkan UI 'tergantung' tanpa maklum balas jika ralat.
+      info = 'Ralat semasa memilih media: $err';
+    } finally {
+      busy.state = false;
+    }
+
     if (info != null && info.isNotEmpty) {
       messenger.showSnackBar(SnackBar(content: Text(info)));
     }

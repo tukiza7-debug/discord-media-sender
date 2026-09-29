@@ -7,12 +7,24 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
-    <!-- Tiada kebenaran storan diperlukan: pemilihan media menggunakan SAF. -->
+    <!-- Kebenaran baca media: DIPERLUKAN untuk mengimbas folder yang dipilih
+         melalui dart:io (Directory.list). Pemilihan fail/ZIP kekal guna SAF
+         (tanpa kebenaran), tetapi imbasan rekursif folder memerlukan
+         kebenaran baca media. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
+    <!-- Android 14+: akses separa (pilih foto tertentu) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED"/>
+    <!-- Android 12 ke bawah -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32"/>
 
     <application
         android:label="Discord Media Sender"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:requestLegacyExternalStorage="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -1,3 +1,28 @@
+## [1.0.5] — 2026-09-30
+
+### Kemas Kini
+- **FIX — Stop/Cancel now really stops the send session**
+  - The progress card and the "Sending..." indicator no longer stay stuck at
+    0/0 with 0.0% — live progress (files, bytes, percent, speed) is streamed
+    to the screen in real time while the send is running
+  - Tapping Cancel now shows "Cancelling..." immediately and the session card
+    disappears as soon as the engine stops — no more session that stays alive
+    until the app is closed
+- **FIX — History no longer shows "running" forever**
+  - If any unexpected error happened mid-send (e.g. a file disappeared or
+    became unreadable), the session used to stay "running" forever because
+    the engine died silently; the engine is now crash-proof: any failure
+    ends the session with a clear status (cancelled/failed/completed)
+  - Sessions stuck at "running" from previous app closes are automatically
+    marked as "Cancelled" the next time the app starts
+- **NEW — Upload watchdog (anti-freeze)**
+  - A stalled connection (no data moved for 90 seconds) is detected and the
+    attempt is retried automatically instead of hanging forever
+  - A single attempt can never take longer than 15 minutes
+  - Missing/unreadable files are reported to the Failed screen before the
+    send starts, instead of silently killing the session
+- Smoother progress bar: byte-by-byte upload progress with live speed
+
 ## [1.0.4] — 2026-09-29
 
 ### Kemas Kini

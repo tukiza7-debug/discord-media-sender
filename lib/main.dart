@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
 import 'providers/config_providers.dart';
+import 'services/database_service.dart';
 import 'services/foreground_manager.dart';
 
 Future<void> main() async {
@@ -29,6 +30,12 @@ Future<void> main() async {
 
   // Foreground service untuk hantaran latar belakang.
   ForegroundManager.ensureInit();
+
+  // Pulihkan sesi yang tersangkut 'running' (app ditutup semasa hantar)
+  // menjadi 'cancelled' — Sejarah tidak lagi memaparkan status lama salah.
+  try {
+    await DatabaseService.instance.healStaleSessions();
+  } catch (_) {}
 
   // Muat konfigurasi & tetapan SEBELUM UI pertama (elak kelipan).
   final container = ProviderContainer();

@@ -77,6 +77,22 @@ class DatabaseService {
     );
   }
 
+  /// Pulihkan sesi yang tersangkut pada status 'running' — berlaku apabila
+  /// aplikasi ditutup semasa hantaran (hantaran tidak kekal selepas app
+  /// dimatikan). Dipanggil sekali semasa app dimulakan supaya Sejarah
+  /// tidak memaparkan "running" selamanya.
+  Future<int> healStaleSessions() async {
+    final db = await database;
+    return db.update(
+      'sessions',
+      {
+        'status': 'cancelled',
+        'ended_at': DateTime.now().millisecondsSinceEpoch,
+      },
+      where: "status IN ('running', 'berjalan')",
+    );
+  }
+
   Future<List<SessionRecord>> sessions({int limit = 500}) async {
     final db = await database;
     final rows = await db.query('sessions', orderBy: 'started_at DESC', limit: limit);

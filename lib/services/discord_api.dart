@@ -32,16 +32,17 @@ class BatchOutcome {
 /// KESELAMATAN: semua entri log yang dihasilkan di sini sentiasa ditapis —
 /// token bot, header Authorization dan URL webhook penuh tidak akan muncul.
 class DiscordApi {
-  DiscordApi._() {
+  DiscordApi() {
     _dio = Dio(BaseOptions(
       connectTimeout: const Duration(seconds: 30),
       receiveTimeout: const Duration(seconds: 120),
-      // sendTimeout sengaja ditiadakan — muat naik besar perlu masa.
+      // sendTimeout sengaja ditiadakan — muat naik besar perlu masa;
+      // pengawal masa luar (watchdog) diuruskan oleh UploadEngine.
       headers: {'Accept': 'application/json'},
     ));
   }
 
-  static final DiscordApi instance = DiscordApi._();
+  static final DiscordApi instance = DiscordApi();
 
   late final Dio _dio;
 
@@ -58,6 +59,7 @@ class DiscordApi {
     required int batchNumber,
     required int totalBatches,
     required int attempt,
+    void Function(int sent, int total)? onProgress,
   }) async {
     final isWebhook = config.mode == SendMode.webhook;
     final endpoint = isWebhook
@@ -79,17 +81,20 @@ class DiscordApi {
 
     var rateWaits = 0;
     while (true) {
-      final form = await _buildForm(payload, files);
       final headers = <String, String>{
         if (!isWebhook) 'Authorization': Security.maskBotToken(config.botToken),
       };
       final sw = Stopwatch()..start();
       try {
+        // Bina form DALAM try — fail yang hilang/tak boleh dibaca menjadi
+        // kegagalan batch yang dilaporkan, bukan kemalangan senyap.
+        final form = await _buildForm(payload, files);
         final resp = await _dio.post<dynamic>(
           endpoint,
           data: form,
           cancelToken: cancelToken,
           options: Options(headers: headers),
+          onSendProgress: (sent, total) => onProgress?.call(sent, total),
         );
         sw.stop();
         _emit(ResponseLogEntry(

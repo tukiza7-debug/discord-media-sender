@@ -16,6 +16,16 @@ class AppLimits {
 
   /// Backoff eksponensial antara percubaan semula (saat).
   static const List<int> retryBackoffSeconds = [1, 2, 4];
+
+  /// Pengawal masa: satu percubaan batch tidak boleh melebihi ini.
+  /// Mencegah sesi tergantung selamanya apabila sambungan tersadai.
+  static const Duration batchAttemptTimeout = Duration(minutes: 15);
+
+  /// Muat naik dianggap tersadai jika tiada bait terhantar selama ini.
+  static const Duration uploadStallTimeout = Duration(seconds: 90);
+
+  /// Jeda minimum antara dua kemas kini progres UI (kurangkan beban rebuild).
+  static const Duration progressThrottle = Duration(milliseconds: 120);
 }
 
 /// Asas API Discord (versi v10).

@@ -228,6 +228,8 @@ class _SessionCard extends ConsumerWidget {
         return (AppColors.danger, 'Failed');
       case 'cancelled':
         return (AppColors.textFaint, 'Cancelled');
+      case 'running':
+        return (AppColors.info, 'In progress');
       default:
         return (AppColors.info, status);
     }

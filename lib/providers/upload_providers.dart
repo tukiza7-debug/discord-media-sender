@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../core/constants.dart';
 import '../core/formatters.dart';
 import '../core/security.dart';
 import '../models/models.dart';
@@ -8,6 +11,7 @@ import '../services/database_service.dart';
 import '../services/discord_api.dart';
 import '../services/foreground_manager.dart';
 import '../services/upload_engine.dart';
+import 'history_providers.dart';
 import 'response_providers.dart';
 
 /// Keadaan UI hantaran.
@@ -55,14 +59,32 @@ class UploadUiState {
 /// Pengawal hantaran utama — menyambung enjin, DB, log respons,
 /// notifikasi foreground, dan sejarah.
 class UploadController extends StateNotifier<UploadUiState> {
-  UploadController(this._ref) : super(const UploadUiState()) {
-    _engine = UploadEngine(api: DiscordApi.instance);
+  UploadController(this._ref, {UploadEngine? engine})
+      : super(const UploadUiState()) {
+    _engine = engine ?? UploadEngine(api: DiscordApi.instance);
+    // JAMBATAN PROGRES MASA NYATA:
+    // Enjin memancar progres sebaik sahaja hantaran bermula — cermin ke
+    // state UI dengan segera. (Dulu: state hanya dikemas kini SELEPAS sesi
+    // tamat → kad progres kekal "Batch 0/0", "0/0", 0.0%, tiada animasi.)
+    _progressSub = _engine.progressStream.listen(_onEngineProgress);
   }
 
   final Ref _ref;
   late final UploadEngine _engine;
+  StreamSubscription<UploadProgress>? _progressSub;
 
   UploadEngine get engine => _engine;
+
+  void _onEngineProgress(UploadProgress p) {
+    if (!mounted) return;
+    state = state.copyWith(progress: p, state: p.state);
+  }
+
+  @override
+  void dispose() {
+    _progressSub?.cancel();
+    super.dispose();
+  }
 
   Future<String?> start({
     required List<MediaItem> items,
@@ -102,71 +124,147 @@ class UploadController extends StateNotifier<UploadUiState> {
       status: 'running',
     ));
 
-    state = state.copyWith(state: EngineState.running, activeSessionId: sessionId);
+    // State awal yang bermakna (bukan 0/0) — enjin akan ambil alih sebaik
+    // sahaja ia mula memancar progres.
+    state = state.copyWith(
+      state: EngineState.running,
+      activeSessionId: sessionId,
+      progress: UploadProgress(
+        state: EngineState.running,
+        totalBatches: (sendable.length + AppLimits.batchSize - 1) ~/ AppLimits.batchSize,
+        currentBatch: 0,
+        totalFiles: sendable.length,
+        successFiles: 0,
+        failedFiles: 0,
+        uploadedBytes: 0,
+        totalBytes: sendable.fold<int>(0, (s, f) => s + f.sizeBytes),
+        speedMBps: 0,
+        message: 'Starting...',
+      ),
+    );
 
     // Wayar log respons masa nyata.
     DiscordApi.instance.onLog = (entry) {
       _ref.read(responseLogProvider.notifier).add(entry);
     };
 
-    final status = await _engine.run(
-      items: sendable,
-      config: config,
-      caption: caption,
-      onLog: (entry) => _ref.read(responseLogProvider.notifier).add(entry),
-      onBatchFailed: (batch, batchIndex, httpCode, discordCode, errorMessage) async {
-        await DatabaseService.instance.addFailures([
-          for (final f in batch)
-            FailedRecord(
-              sessionId: sessionId,
-              fileName: f.name,
-              filePath: f.path,
-              sizeBytes: f.sizeBytes,
-              batchIndex: batchIndex,
-              httpCode: httpCode,
-              errorMessage: errorMessage ?? 'Unknown error',
-              mode: mode,
-              target: target,
-              createdAt: DateTime.now(),
+    // Enjin dijamin tidak melempar (ada try/catch dalaman) — tetapi jaga
+    // jugakan: apa pun yang berlaku, sesi MESTI ditamatkan dalam DB.
+    String status;
+    try {
+      status = await _engine.run(
+        items: sendable,
+        config: config,
+        caption: caption,
+        onLog: (entry) => _ref.read(responseLogProvider.notifier).add(entry),
+        onBatchFailed: (batch, batchIndex, httpCode, discordCode, errorMessage) async {
+          await DatabaseService.instance.addFailures([
+            for (final f in batch)
+              FailedRecord(
+                sessionId: sessionId,
+                fileName: f.name,
+                filePath: f.path,
+                sizeBytes: f.sizeBytes,
+                batchIndex: batchIndex,
+                httpCode: httpCode,
+                errorMessage: errorMessage ?? 'Unknown error',
+                mode: mode,
+                target: target,
+                createdAt: DateTime.now(),
+              ),
+          ]);
+        },
+        onForegroundUpdate: (batch, totalBatches, percent) {
+          ForegroundManager.update(
+            'Sending media to Discord',
+            ForegroundManager.progressText(
+              batch: batch,
+              totalBatches: totalBatches,
+              percent: percent,
             ),
-        ]);
-      },
-      onForegroundUpdate: (batch, totalBatches, percent) {
-        ForegroundManager.update(
-          'Sending media to Discord',
-          ForegroundManager.progressText(
-            batch: batch,
-            totalBatches: totalBatches,
-            percent: percent,
-          ),
-        );
-      },
-    );
+          );
+        },
+      );
+    } catch (_) {
+      status = _engine.isCancelRequested ? 'cancelled' : 'failed';
+    }
 
     final successCount = _engine.lastProgress.successFiles;
     final failedCount = _engine.lastProgress.failedFiles;
 
-    await DatabaseService.instance.finishSession(
-      sessionId,
-      success: successCount,
-      failed: failedCount,
-      status: status,
-    );
-    await ForegroundManager.stop();
+    // SENTIASA tamatkan rekod sesi (dulu: jika enjin mati di tengah jalan,
+    // rekod kekal "running" selamanya dan hanya hilang bila app ditutup).
+    try {
+      await DatabaseService.instance.finishSession(
+        sessionId,
+        success: successCount,
+        failed: failedCount,
+        status: status,
+      );
+    } catch (_) {}
+    try {
+      await ForegroundManager.stop();
+    } catch (_) {}
 
-    // Buang fail yang sudah dihantar daripada senarai kekal yang gagal ditanda.
     state = state.copyWith(
-      state: _engine.lastProgress.state,
+      state: status == 'cancelled' ? EngineState.cancelled : EngineState.done,
       progress: _engine.lastProgress,
       lastFinishedStatus: status,
       clearSession: true,
     );
+    _refreshLists();
     return '${describeStatus(status)}: $successCount succeeded, $failedCount failed';
   }
 
   void pause() => _engine.pause();
   void resume() => _engine.resume();
-  Future<void> cancel() => _engine.cancel();
+
+  /// Batal sesi semasa — UI dikemas kini SEGERA, dan keadaan zombi
+  /// (enjin sudah mati tetapi UI masih "running") dipulihkan automatik.
+  Future<void> cancel() async {
+    if (!_engine.isBusy) {
+      // KEADAAN ZOMBI: kad progres masih tergantung walaupun enjin tidak
+      // berjalan (kemalangan lama). Pulihkan tanpa perlu tutup app.
+      if (state.isRunning) {
+        final id = state.activeSessionId;
+        if (id != null) {
+          try {
+            await DatabaseService.instance.finishSession(
+              id,
+              success: 0,
+              failed: 0,
+              status: 'cancelled',
+            );
+          } catch (_) {}
+        }
+        try {
+          await ForegroundManager.stop();
+        } catch (_) {}
+        state = state.copyWith(
+          state: EngineState.cancelled,
+          clearSession: true,
+          lastFinishedStatus: 'cancelled',
+          progress: state.progress.copyWith(
+            state: EngineState.cancelled,
+            message: 'Cancelled',
+          ),
+        );
+        _refreshLists();
+      }
+      return;
+    }
+    // Tunjukkan "Cancelling..." pada UI dengan segera (dulu: UI terus
+    // memaparkan "Sending to Discord" sehingga enjin betul-betul tamat).
+    state = state.copyWith(state: EngineState.cancelling);
+    await _engine.cancel();
+  }
+
+  void _refreshLists() {
+    try {
+      _ref.read(historyProvider.notifier).load();
+      _ref.read(failedProvider.notifier).load();
+    } catch (_) {}
+  }
 
   void acknowledgeFinished() {
     if (!state.isRunning) {
@@ -191,7 +289,8 @@ class UploadController extends StateNotifier<UploadUiState> {
 }
 
 final uploadControllerProvider =
-    StateNotifierProvider<UploadController, UploadUiState>((ref) => UploadController(ref));
+    StateNotifierProvider<UploadController, UploadUiState>(
+        (ref) => UploadController(ref));
 
 /// Format ringkas untuk butang sticky.
 String sendButtonLabel(int readyCount) => 'Send ($readyCount files)';

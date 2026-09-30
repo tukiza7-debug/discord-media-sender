@@ -251,6 +251,63 @@ class ResponseLogEntry {
   final String? errorMessage;
   final String? explanation; // penerangan BM
   final int? retryAfterMs; // untuk kad countdown 429
+
+  /// Task-isolate: siri ke JSON untuk dihantar ke main isolate melalui
+  /// port komunikasi foreground task (2c).
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'batchNumber': batchNumber,
+        'totalBatches': totalBatches,
+        'fileCount': fileCount,
+        'fileNames': fileNames,
+        'filePaths': filePaths,
+        'endpoint': endpoint,
+        'method': method,
+        'status': status.name,
+        'statusCode': statusCode,
+        'reasonPhrase': reasonPhrase,
+        'latencyMs': latencyMs,
+        'uploadBytes': uploadBytes,
+        'speedMBps': speedMBps,
+        'attempt': attempt,
+        'timestamp': timestamp.millisecondsSinceEpoch,
+        'rateLimitHeaders': rateLimitHeaders,
+        'responseJson': responseJson,
+        'errorMessage': errorMessage,
+        'explanation': explanation,
+        'retryAfterMs': retryAfterMs,
+      };
+
+  static ResponseLogEntry fromJson(Map<String, dynamic> j) => ResponseLogEntry(
+        id: (j['id'] ?? '') as String,
+        batchNumber: (j['batchNumber'] ?? 0) as int,
+        totalBatches: (j['totalBatches'] ?? 0) as int,
+        fileCount: (j['fileCount'] ?? 0) as int,
+        fileNames: ((j['fileNames'] ?? const []) as List)
+            .map((e) => e.toString())
+            .toList(),
+        filePaths: ((j['filePaths'] ?? const []) as List)
+            .map((e) => e.toString())
+            .toList(),
+        endpoint: (j['endpoint'] ?? '') as String,
+        method: (j['method'] ?? 'POST') as String,
+        status: LogStatus.values.firstWhere(
+          (s) => s.name == j['status'],
+          orElse: () => LogStatus.success,
+        ),
+        statusCode: j['statusCode'] as int?,
+        reasonPhrase: j['reasonPhrase'] as String?,
+        latencyMs: (j['latencyMs'] ?? 0) as int,
+        uploadBytes: (j['uploadBytes'] ?? 0) as int,
+        speedMBps: ((j['speedMBps'] ?? 0) as num).toDouble(),
+        attempt: (j['attempt'] ?? 1) as int,
+        timestamp: DateTime.fromMillisecondsSinceEpoch((j['timestamp'] ?? 0) as int),
+        rateLimitHeaders: (j['rateLimitHeaders'] ?? const {}).cast<String, String>(),
+        responseJson: j['responseJson'],
+        errorMessage: j['errorMessage'] as String?,
+        explanation: j['explanation'] as String?,
+        retryAfterMs: j['retryAfterMs'] as int?,
+      );
 }
 
 /// Keadaan enjin hantaran.
@@ -451,4 +508,75 @@ class FailedRecord {
       mimeType: MediaCatalog.mimeType(name),
     );
   }
+}
+
+/// Satu fail dalam giliran tahan-lama (2b) — baris jadual `session_files`.
+/// Status: 'pending' | 'sent' | 'failed' | 'skipped'.
+class SessionFileRecord {
+  const SessionFileRecord({
+    required this.sessionId,
+    required this.idx,
+    required this.path,
+    required this.name,
+    required this.size,
+    this.status = 'pending',
+    this.error,
+  });
+
+  final int sessionId;
+  final int idx;
+  final String path;
+  final String name;
+  final int size;
+  final String status;
+  final String? error;
+
+  Map<String, dynamic> toMap() => {
+        'session_id': sessionId,
+        'idx': idx,
+        'path': path,
+        'name': name,
+        'size': size,
+        'status': status,
+        'error': error,
+      };
+
+  static SessionFileRecord fromMap(Map<String, dynamic> m) => SessionFileRecord(
+        sessionId: (m['session_id'] ?? 0) as int,
+        idx: (m['idx'] ?? 0) as int,
+        path: (m['path'] ?? '') as String,
+        name: (m['name'] ?? '') as String,
+        size: (m['size'] ?? 0) as int,
+        status: (m['status'] ?? 'pending') as String,
+        error: m['error'] as String?,
+      );
+
+  /// Bina semula MediaItem untuk enjin hantaran (sambung semula).
+  MediaItem toMediaItem() {
+    final type = MediaCatalog.isVideo(name)
+        ? MediaType.video
+        : (MediaCatalog.isImage(name) ? MediaType.image : MediaType.other);
+    return MediaItem(
+      id: 'q-$sessionId-$idx',
+      path: path,
+      name: name,
+      sizeBytes: size,
+      type: type,
+      mimeType: MediaCatalog.mimeType(name),
+    );
+  }
+}
+
+/// 2d: sesi yang boleh disambung semula — 'running' pada DB, task sudah
+/// mati, dan masih ada baris pending. Papar prompt "Resume sending?".
+class ResumableSession {
+  const ResumableSession({
+    required this.sessionId,
+    required this.pendingCount,
+    required this.totalFiles,
+  });
+
+  final int sessionId;
+  final int pendingCount;
+  final int totalFiles;
 }

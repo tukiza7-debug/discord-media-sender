@@ -157,6 +157,7 @@ class SettingsState {
     this.onboardingDone = false,
     this.appVersion = '',
     this.maxFileMB = 20,
+    this.autoUpdateEnabled = true,
   });
 
   final AppThemeMode themeMode;
@@ -167,12 +168,16 @@ class SettingsState {
   /// B02: had saiz muat naik aktif (MB) — preset 10/20/50/100.
   final int maxFileMB;
 
+  /// 1b: semakan kemas kini automatik (lalai ON).
+  final bool autoUpdateEnabled;
+
   SettingsState copyWith({
     AppThemeMode? themeMode,
     OrientationSetting? orientation,
     bool? onboardingDone,
     String? appVersion,
     int? maxFileMB,
+    bool? autoUpdateEnabled,
   }) =>
       SettingsState(
         themeMode: themeMode ?? this.themeMode,
@@ -180,6 +185,7 @@ class SettingsState {
         onboardingDone: onboardingDone ?? this.onboardingDone,
         appVersion: appVersion ?? this.appVersion,
         maxFileMB: maxFileMB ?? this.maxFileMB,
+        autoUpdateEnabled: autoUpdateEnabled ?? this.autoUpdateEnabled,
       );
 }
 
@@ -188,6 +194,7 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
 
   Future<void> load() async {
     final s = await SecureStore.loadSettingsSafe();
+    final autoUpdate = await SecureStore.loadAutoUpdate();
     state = state.copyWith(
       themeMode: switch (s.themeMode) {
         'light' => AppThemeMode.light,
@@ -201,6 +208,7 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
       },
       onboardingDone: s.onboardingDone,
       maxFileMB: s.maxFileMB,
+      autoUpdateEnabled: autoUpdate,
     );
   }
 
@@ -228,6 +236,12 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   Future<void> setMaxFileMB(int mb) async {
     state = state.copyWith(maxFileMB: mb);
     await SecureStore.saveMaxFileMB(mb);
+  }
+
+  /// 1b: kemas kini automatik ON/OFF.
+  Future<void> setAutoUpdateEnabled(bool v) async {
+    state = state.copyWith(autoUpdateEnabled: v);
+    await SecureStore.saveAutoUpdate(v);
   }
 
   Future<void> completeOnboarding() async {

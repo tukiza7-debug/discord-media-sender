@@ -1,3 +1,33 @@
+## [1.0.9] — 2026-09-30
+
+### Kemas Kini
+- **NEW — Auto-detect updates from GitHub** — the app checks the latest
+  GitHub release at most once every 6 hours (never during a send session),
+  shows the release notes, and downloads the right APK for the device ABI
+  (universal fallback). Every download is verified against SHA256SUMS.txt
+  (checksum + size, fail closed) before the system installer is offered.
+  Manual "Check for updates" row in Settings next to the version info
+- **NEW — Uploads survive swipe-away & process kill** — the upload engine
+  now runs INSIDE the foreground service isolate: swipe from recents,
+  backgrounding, screen off and rotation no longer stop a session; the
+  notification (with a Stop button) is owned by the service itself
+- **NEW — Durable send queue** — every file of a session is persisted in a
+  new session_files table (batched writes, stays fast at 20,000+ files);
+  the database is the source of truth and a session heartbeat keeps the
+  status live
+- **NEW — Resume after interruption** — if the process is killed mid-send,
+  the service auto-restarts and continues with pending files only (already-
+  sent files are never re-sent; the in-flight batch may be delivered twice
+  and the session reason records it). Dead sessions are never silently
+  cancelled any more: the next app open asks "Resume sending?" with
+  Resume / Discard
+- **FIX — Stop rules** — a running session now ends ONLY when the user
+  taps Stop (in the app or the notification), the session finishes, or the
+  engine's own failure policy triggers; the final result is posted as a
+  notification before the service stops
+- **NEW — Battery optimization prompt** — one-time explanation before the
+  first send (never blocks), current state shown in Settings
+
 ## [1.0.8] — 2026-09-30
 
 ### Kemas Kini

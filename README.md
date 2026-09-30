@@ -27,7 +27,8 @@ Fail `SHA256SUMS.txt` mengandungi checksum untuk pengesahan integriti.
 - **Bulk send** — kelompok 10 fail/mesej (had Discord), kapsyen maks 2,000 aksara pada batch pertama, pratonton mesej ala Discord.
 - **Progres masa nyata** — bar animasi, kiraan berjaya/gagal, kelajuan, batch semasa, **Jeda/Sambung/Batal**.
 - **Auto-retry 3 kali** dengan backoff eksponensial + hormat rate limit Discord (HTTP 429, `Retry-After`).
-- **Foreground service** — notifikasi progres; hantaran tidak terhenti di latar belakang dan kekal semasa skrin diputar.
+- **Foreground service + enjin dalam servis** — notifikasi progres dengan **butang Stop**; enjin hantaran berjalan DI DALAM task isolate servis — swipe dari recents, backgrounding, skrin padam, dan rotasi TIDAK menghentikan sesi; servis direstasi automatik oleh sistem selepas proses mati dan baris pending diteruskan (fail yang sudah dihantar tidak dihantar semula).
+- **Kemas kini automatik dari GitHub** — semakan sekurang-kurangnya sekali setiap 6 jam (tidak pernah semasa sesi hantaran), dialog nota keluaran, muat turun ikut ABI peranti (fallback universal), **pengesahan SHA-256 + saiz (fail-closed)** terhadap `SHA256SUMS.txt` sebelum pemasang sistem dibuka; semakan manual di Tetapan → Tentang.
 - **Skrin Respons** — log masa nyata setiap permintaan: lencana status HTTP berwarna, masa respons (ms), saiz & kelajuan muat naik, bilangan cubaan, header rate limit, JSON berwarna boleh lipat, penerangan ralat dalam Bahasa Inggeris + cadangan penyelesaian, **Salin JSON / Salin cURL** (sentiasa ditapis), kad khas 429 dengan kira detik, penapis chip + carian, mod konsol (monospace), auto-scroll, eksport log .txt/.json.
 - **Sejarah & Gagal** — sesi direkod dalam SQLite (dikumpul ikut tarikh), kegagalan selepas 3 cubaan dipaparkan dengan kod HTTP & mesej, **Cuba Semula** (satu fail / satu sesi / semua), swipe untuk padam, tarik-untuk-muat-semula.
 - **Adaptif penuh** — navigasi bawah (potret) / NavigationRail (landscape), dua lajur di skrin Hantar, master-detail di skrin Respons/Sejarah/Gagal, tetapan orientasi Auto/Potret/Landscape. Semua state dalam Riverpod — tiada data hilang semasa rotasi.
@@ -86,6 +87,35 @@ Tunggu workflow Release siap (5-10 minit), kemudian muat turun APK dari tab **Re
 > **Penting**: setiap release mesti guna versi baharu — workflow akan GAGAL sekiranya tag versi itu sudah pernah diterbitkan. Jika seksyen `CHANGELOG.md` tiada untuk versi tersebut, nota release automatik dijana daripada senarai commit sejak tag sebelumnya.
 
 Anda juga boleh cetus release manual: tab **Actions → Release → Run workflow**, masukkan versi (contoh `1.2.0`).
+
+## Hantar di Latar Belakang (Background sending)
+
+Sesi hantaran berjalan dalam foreground service (jenis `dataSync`) dan hanya BERAKHIR apabila:
+
+- pengguna menekan **Stop** dalam app atau **dalam notifikasi**, atau
+- sesi tamat dengan sendirinya, atau
+- dasar kegagalan enjin sendiri berlaku (ralat tidak boleh di-retry / cubaan habis).
+
+Tutup app, swipe dari recents, backgrounding, skrin padam, dan rotasi **tidak menghentikan** sesi. Setiap fail sesi disimpan dalam pangkalan data (`session_files`) — jika proses terbunuh, servis direstasi dan baris **pending sahaja** diteruskan; fail yang sudah dihantar tidak pernah dihantar semula (satu batch dalam penerbangan mungkin terhantar dua kali — direkodkan dalam sebab sesi). Sesi yang mati tidak dibatalkan senyap: app akan bertanya **"Resume sending?"** (Sambung / Buang).
+
+**Perkara yang tiada app boleh elak** (semuanya berakhir dengan prompt "Resume sending?", bukan kehilangan senyap):
+
+- **Force Stop** dari System Settings — servis dan proses dibunuh; sesi diteruskan selepas app dibuka semula.
+- **Pembunuh bateri vendor** yang agresif (sone OEM mematikan app tanpa amaran) — benarkan pengecualian pengoptimuman bateri (app akan bertanya sekali; boleh diubah di Tetapan → Battery optimization).
+- **Reboot** — sesi kekal 'running' dan ditawarkan sambung semula pada app dibuka.
+
+Had Android 15+ untuk servis `dataSync` (~6 jam/24 jam) dinyatakan dalam Risiko pada laporan pembangunan.
+
+## Kemas Kini Dalam App
+
+App menyemak keluaran terkini GitHub (tiada token, tiada telemetri). Jika versi lebih baharu wujud dan sesi hantaran tidak aktif, dialog memaparkan nota keluaran dengan butang **Update now / Later / Skip this version**. "Update now" akan:
+
+1. Memilih APK mengikut ABI peranti (`arm64-v8a` → `armeabi-v7a` → `x86_64`, fallback `universal`).
+2. Memuat turun ke cache app (dengan kemajuan & butang Batal).
+3. **Mengesahkan integriti secara fail-closed**: saiz mesti sepadan dengan metadata aset DAN SHA-256 mesti sepadan dengan baris dalam `SHA256SUMS.txt` keluaran yang sama. Sekiranya fail checksum tiada, entri tiada, atau nilai tidak sepadan — fail dibuang dan pemasangan **TIDAK** diteruskan.
+4. Meminta kebenaran "install unknown apps" dan membuka pemasang sistem.
+
+Muat turun hanya dibenarkan dari `https://github.com` atau host release-asset rasmi GitHub. Semakan manual (mengabaikan throttle 6 jam & versi dilangkau) ada di **Tetapan → Tentang → Check for updates**.
 
 ## Kemas Kini APK ke Versi Baharu
 

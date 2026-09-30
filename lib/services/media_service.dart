@@ -5,11 +5,13 @@ import 'package:archive/archive.dart';
 import 'package:archive/archive_io.dart' show InputFileStream;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../core/constants.dart';
 import '../models/models.dart';
+import 'database_service.dart';
 
 /// Keputusan operasi pilih media.
 class MediaPickResult {
@@ -29,14 +31,75 @@ class MediaService {
   /// (B10: dulu kekal selamanya dalam temp dir).
   static final List<String> _zipTempDirs = [];
 
-  /// Buang semua folder sementara ekstrak ZIP (dipanggil semasa app mula).
-  static void cleanupZipTemp() {
-    for (final path in List<String>.from(_zipTempDirs)) {
+  /// 2d: pembersihan sementara ZIP semasa app dimulakan — folder yang
+  /// mengandungi laluan fail milik sesi yang masih 'running' (boleh
+  /// disambung semula) DILINDUNGI; yang lain dibuang. Async kerana perlu
+  /// bertanya DB (dipanggil dari main.dart dalam try/catch).
+  static Future<void> cleanupZipTemp() async {
+    Set<String> protectedDirs = const {};
+    try {
+      protectedDirs = zipTempDirsFor(
+          await DatabaseService.instance.runningSessionFilePaths());
+    } catch (_) {}
+    final tempPath = await _tempRoot();
+    cleanupZipTempSync(tempPath, protectedDirs: protectedDirs);
+  }
+
+  static Future<String> _tempRoot() async {
+    final dir = await getTemporaryDirectory();
+    return dir.path;
+  }
+
+  /// Teras segerak pembersihan — BOLEH DIUJI: buang folder `zip_*` dalam
+  /// [tempPath] kecuali folder dalam [protectedDirs]. Meliputi kedua-dua
+  /// folder berdaftar dalam proses ini DAN baki folder proses lama
+  /// (dahulu: kekal selama-lamanya selepas proses mati).
+  static void cleanupZipTempSync(String tempPath,
+      {Set<String> protectedDirs = const {}}) {
+    final candidates = <String>{
+      for (final path in List<String>.from(_zipTempDirs)) path,
+      // Baki folder proses lama — imbas temp dir.
+      if (Directory(tempPath).existsSync())
+        for (final e in Directory(tempPath).listSync(followLinks: false))
+          if (e is Directory && p.basename(e.path).startsWith('zip_')) e.path,
+    };
+    for (final path in candidates) {
+      if (protectedDirs.contains(path)) continue; // sesi hidup — lindungi
       try {
         final d = Directory(path);
         if (d.existsSync()) d.deleteSync(recursive: true);
-        _zipTempDirs.remove(path);
       } catch (_) {}
+      _zipTempDirs.remove(path);
+    }
+  }
+
+  /// Set folder sementara ZIP (nama bermula 'zip_') yang mengandungi
+  /// mana-mana [filePaths]. Output ekstraksi sentiasa RATA — folder =
+  /// direktori induk terus fail; laluan lain (galeri) diabaikan.
+  static Set<String> zipTempDirsFor(Iterable<String> filePaths) {
+    final out = <String>{};
+    for (final path in filePaths) {
+      if (path.isEmpty) continue;
+      final parent = p.basename(p.dirname(path));
+      if (parent.startsWith('zip_')) out.add(p.dirname(path));
+    }
+    return out;
+  }
+
+  /// 2d: buang folder sementara ZIP yang dirujuk oleh sesi yang TAMAT /
+  /// dibatalkan / dibuang — KECUALI folder yang masih dilindungi (dipakai
+  /// sesi 'running' yang lain).
+  static Future<void> deleteSessionZipTempDirs(
+    Iterable<String> filePaths, {
+    Set<String> protectedDirs = const {},
+  }) async {
+    final dirs = zipTempDirsFor(filePaths).difference(protectedDirs);
+    for (final dir in dirs) {
+      try {
+        final d = Directory(dir);
+        if (d.existsSync()) d.deleteSync(recursive: true);
+      } catch (_) {}
+      _zipTempDirs.remove(dir);
     }
   }
 

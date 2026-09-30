@@ -28,6 +28,16 @@ class SecureStore {
   static const _kOrientation = 'set_orientation';
   static const _kOnboardingDone = 'set_onboarding_done';
   static const _kMaxFileMB = 'set_max_file_mb';
+  // 1b: pilihan kemas kini automatik + throttle + versi dilangkau.
+  static const _kAutoUpdate = 'set_auto_update';
+  static const _kUpdateLastCheckMs = 'set_update_last_check_ms';
+  static const _kUpdateSkippedTag = 'set_update_skipped_tag';
+  // 2d: tetapan sambung semula (bukan rahsia) untuk task isolate.
+  static const _kResumeSessionId = 'res_session_id';
+  static const _kResumeMaxMB = 'res_max_mb';
+  static const _kResumeCaption = 'res_caption';
+  // 2f: prompt penjelasan bateri sekali sahaja.
+  static const _kBatteryAsked = 'set_battery_asked';
 
   static Future<Map<String, String>> loadConfig() async {
     final all = await _storage.readAll();
@@ -122,6 +132,115 @@ class SecureStore {
 
   static Future<void> setOnboardingDone() =>
       _storage.write(key: _kOnboardingDone, value: 'true');
+
+  // ------------------------------------------------------- kemas kini
+
+  static Future<bool> loadAutoUpdate() async {
+    try {
+      final all = await _storage.readAll();
+      return (all[_kAutoUpdate] ?? 'true') == 'true'; // lalai ON (1b)
+    } catch (_) {
+      return true;
+    }
+  }
+
+  static Future<void> saveAutoUpdate(bool v) async {
+    try {
+      await _storage.write(key: _kAutoUpdate, value: v ? 'true' : 'false');
+    } catch (_) {}
+  }
+
+  /// Throttle semakan automatik — sekurang-kurangnya 6 jam di antara (1b).
+  static Future<int> loadLastUpdateCheckMs() async {
+    try {
+      final all = await _storage.readAll();
+      return int.tryParse(all[_kUpdateLastCheckMs] ?? '') ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  static Future<void> saveLastUpdateCheckMs(int ms) async {
+    try {
+      await _storage.write(key: _kUpdateLastCheckMs, value: ms.toString());
+    } catch (_) {}
+  }
+
+  /// Versi yang dilangkau pengguna (1c) — semakan automatik tidak
+  /// mengganggu lagi untuk versi itu.
+  static Future<String> loadSkippedUpdateTag() async {
+    try {
+      final all = await _storage.readAll();
+      return all[_kUpdateSkippedTag] ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  static Future<void> saveSkippedUpdateTag(String tag) async {
+    try {
+      if (tag.isEmpty) {
+        await _storage.delete(key: _kUpdateSkippedTag);
+      } else {
+        await _storage.write(key: _kUpdateSkippedTag, value: tag);
+      }
+    } catch (_) {}
+  }
+
+  // ---------------------------------------------- sambung semula (2d)
+
+  /// Tetapan sesi yang sedang berjalan — ditulis oleh task isolate semasa
+  /// start; dibaca semula oleh onStart selepas proses mati. TIADA RAHSIA.
+  static Future<void> saveResumeSettings({
+    required int sessionId,
+    required int maxFileMB,
+    required String caption,
+  }) async {
+    try {
+      await _storage.write(key: _kResumeSessionId, value: sessionId.toString());
+      await _storage.write(key: _kResumeMaxMB, value: maxFileMB.toString());
+      await _storage.write(key: _kResumeCaption, value: caption);
+    } catch (_) {}
+  }
+
+  static Future<({int? sessionId, int maxFileMB, String caption})>
+      loadResumeSettings() async {
+    try {
+      final all = await _storage.readAll();
+      return (
+        sessionId: int.tryParse(all[_kResumeSessionId] ?? ''),
+        maxFileMB: int.tryParse(all[_kResumeMaxMB] ?? '') ?? 20,
+        caption: all[_kResumeCaption] ?? '',
+      );
+    } catch (_) {
+      return (sessionId: null, maxFileMB: 20, caption: '');
+    }
+  }
+
+  static Future<void> clearResumeSettings() async {
+    try {
+      await _storage.delete(key: _kResumeSessionId);
+      await _storage.delete(key: _kResumeMaxMB);
+      await _storage.delete(key: _kResumeCaption);
+    } catch (_) {}
+  }
+
+  // ------------------------------------------------------- bateri (2f)
+
+  static Future<bool> loadBatteryAsked() async {
+    try {
+      final all = await _storage.readAll();
+      return (all[_kBatteryAsked] ?? 'false') == 'true';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> saveBatteryAsked() async {
+    try {
+      await _storage.write(key: _kBatteryAsked, value: 'true');
+    } catch (_) {}
+  }
 
   static Future<void> wipeAll() => _storage.deleteAll();
 

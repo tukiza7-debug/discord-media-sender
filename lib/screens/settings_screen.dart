@@ -11,7 +11,10 @@ import '../../models/models.dart';
 import '../../providers/config_providers.dart';
 import '../../providers/history_providers.dart';
 import '../../providers/response_providers.dart';
+import '../../providers/upload_providers.dart';
+import '../../services/update_service.dart';
 import '../../widgets/common.dart';
+import 'update_dialog.dart';
 import 'onboarding_screen.dart';
 
 /// Skrin Tetapan — tema, orientasi, notifikasi, data & tentang.
@@ -26,6 +29,8 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   PackageInfo? _info;
   bool? _notifGranted;
+  bool? _batteryIgnored;
+  bool _checkingUpdate = false;
 
   @override
   void initState() {
@@ -36,6 +41,46 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     Permission.notification.status.then((s) {
       if (mounted) setState(() => _notifGranted = s.isGranted);
     });
+    // 2f: keadaan pengecualian bateri semasa — dipapar pada baris Tetapan.
+    Permission.ignoreBatteryOptimizations.status.then((s) {
+      if (mounted) setState(() => _batteryIgnored = s.isGranted);
+    }).catchError((_) {
+      if (mounted) setState(() => _batteryIgnored = false);
+    });
+  }
+
+  /// 1b: semakan manual — melaporkan keputusan (up to date / update
+  /// available / gagal). Mengabaikan throttle 6 jam & versi dilangkau.
+  Future<void> _checkForUpdates() async {
+    if (_checkingUpdate) return;
+    setState(() => _checkingUpdate = true);
+    try {
+      final info = _info ?? await PackageInfo.fromPlatform();
+      final result =
+          await UpdateService.checkLatest(currentVersion: info.version);
+      if (!mounted) return;
+      if (!result.ok) {
+        showAppSnackBar(context, result.error ?? 'Check failed.', error: true);
+        return;
+      }
+      if (!result.updateAvailable || result.release == null) {
+        showAppSnackBar(
+            context, 'You are on the latest version (${info.version}).');
+        return;
+      }
+      await showUpdateAvailableDialog(
+        context,
+        release: result.release!,
+        currentVersion: info.version,
+        // 3c: semasa sesi hantaran aktif, Update now dilumpuhkan.
+        sessionRunning: () =>
+            ref.read(uploadControllerProvider).isRunning,
+      );
+    } catch (_) {
+      if (mounted) showAppSnackBar(context, 'Check failed.', error: true);
+    } finally {
+      if (mounted) setState(() => _checkingUpdate = false);
+    }
   }
 
   @override
@@ -141,17 +186,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                     ),
                     const Divider(height: 1),
-                    // B15: pengecualian pengoptimuman bateri — hantaran
-                    // panjang lebih dipercayai di latar belakang.
+                    // B15 + 2f: pengecualian pengoptimuman bateri — hantaran
+                    // panjang lebih dipercayai di latar belakang. Keadaan
+                    // semasa dipapar; boleh diminta semula di sini.
                     ListTile(
                       leading: const Icon(LucideIcons.batteryCharging),
                       title: const Text('Battery optimization'),
-                      subtitle: const Text(
-                          'Disable optimization for more reliable long uploads'),
+                      subtitle: Text(
+                        _batteryIgnored == null
+                            ? 'Checking...'
+                            : (_batteryIgnored!
+                                ? 'Unrestricted — long uploads are reliable'
+                                : 'Restricted — background uploads may be paused by the system'),
+                      ),
                       trailing: FilledButton.tonal(
                         onPressed: () async {
                           try {
-                            await Permission.ignoreBatteryOptimizations.request();
+                            final s = await Permission
+                                .ignoreBatteryOptimizations
+                                .request();
+                            if (mounted) {
+                              setState(() => _batteryIgnored = s.isGranted);
+                            }
                           } catch (_) {}
                         },
                         child: const Text('Open'),
@@ -280,6 +336,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
+                      ),
+                      const SizedBox(height: 10),
+                      // 1b: semakan manual + togol automatik — di sebelah
+                      // maklumat versi (diabaikan throttle & versi dilangkau).
+                      FilledButton.tonalIcon(
+                        onPressed: _checkingUpdate ? null : _checkForUpdates,
+                        icon: _checkingUpdate
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(LucideIcons.refreshCw, size: 16),
+                        label: const Text('Check for updates'),
+                      ),
+                      const SizedBox(height: 4),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Check for updates automatically'),
+                        subtitle: const Text(
+                            'At most once every 6 hours, from GitHub releases'),
+                        value: settings.autoUpdateEnabled,
+                        onChanged: (v) => ref
+                            .read(settingsProvider.notifier)
+                            .setAutoUpdateEnabled(v),
                       ),
                       const SizedBox(height: 10),
                       Row(

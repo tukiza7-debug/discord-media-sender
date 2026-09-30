@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/app_theme.dart';
+import '../../core/secure_store.dart';
 import '../../core/validators.dart';
 import '../../models/models.dart';
 import '../../providers/config_providers.dart';
@@ -427,6 +429,43 @@ class _BottomBar extends ConsumerWidget {
           error: true);
       return;
     }
+
+    // 2f: penjelasan SEKALI SAHAJA sebelum hantaran pertama + permintaan
+    // pengecualian bateri. Tidak pernah menyekat hantaran jika ditolak.
+    try {
+      if (!await SecureStore.loadBatteryAsked()) {
+        await SecureStore.saveBatteryAsked();
+        if (context.mounted) {
+          final allow = await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              title: const Text('Reliable background sending'),
+              content: const Text(
+                'To keep large uploads running while the app is in the '
+                'background, allow Discord Media Sender to ignore battery '
+                'optimization. You can change this any time in Settings → '
+                'Battery optimization.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Not now'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: const Text('Allow'),
+                ),
+              ],
+            ),
+          );
+          if (allow == true) {
+            try {
+              await Permission.ignoreBatteryOptimizations.request();
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (_) {}
 
     final controller = ref.read(uploadControllerProvider.notifier);
     final result = await controller.start(

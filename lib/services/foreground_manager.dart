@@ -1,13 +1,16 @@
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
-/// Pengurus foreground service — supaya hantaran tidak dihentikan
-/// sistem semasa aplikasi di latar belakang, dan notifikasi progres
-/// sentiasa dipaparkan.
+import 'upload_task_handler.dart';
+
+/// Pengurus foreground service (2a) — enjin hantaran kini berjalan DI
+/// DALAM task isolate servis; main isolate hanyalah klien. Servis menahan
+/// proses, memaparkan notifikasi progres dgn butang Stop, dan DIRESTASI
+/// AUTOMATIK oleh plugin selepas proses mati (RestartReceiver + START_STICKY
+/// — disahkan dalam sumber plugin 8.17.0; tiada opsyen allowAutoRestart
+/// berasingan pada versi ini).
 ///
 /// B15: `_running` KINI DISINKRONKAN dengan keadaan servis sebenar
-/// (FlutterForegroundTask.isRunningService) sebelum start/stop — dulu ia
-/// flag setempat yang tidak pernah direkonsiliasi (contoh: app digesap
-/// keluar dari recents → enjin mati tetapi flag masih 'true').
+/// (FlutterForegroundTask.isRunningService) sebelum start/stop.
 class ForegroundManager {
   ForegroundManager._();
   static bool _running = false;
@@ -24,51 +27,50 @@ class ForegroundManager {
         showWhen: false,
       ),
       iosNotificationOptions: const IOSNotificationOptions(showNotification: false),
+      // 2e: allowWifiLock — radio Wi-Fi kekal hidup semasa muat naik besar
+      // (WAKE_LOCK sudah diisytiharkan dalam manifest).
       foregroundTaskOptions: ForegroundTaskOptions(
         eventAction: ForegroundTaskEventAction.nothing(),
         allowWakeLock: true,
+        allowWifiLock: true,
       ),
     );
   }
 
+  /// 2c: panggil sekali dalam main() — daftar port komunikasi main isolate.
+  static void initCommunicationPort() {
+    FlutterForegroundTask.initCommunicationPort();
+  }
+
   /// B15: selaraskan flag tempatan dengan keadaan servis sebenar.
-  /// Gagal (platform tidak sedia, ujian) diabaikan — flag kekal.
   static Future<void> _reconcile() async {
-    try {
-      final real = await FlutterForegroundTask.isRunningService;
-      if (real != _running) _running = real;
-    } catch (_) {}
+    _running = await isServiceRunning();
   }
 
-  static Future<void> start(String title, String text) async {
-    await _reconcile();
-    if (_running) {
-      update(title, text);
-      return;
-    }
+  /// Keadaan servis sebenar (aman untuk dipanggil di mana-mana).
+  static Future<bool> isServiceRunning() async {
     try {
-      await FlutterForegroundTask.startService(
-        notificationTitle: title,
-        notificationText: text,
-        // Callback kosong: task handler tidak diperlukan kerana enjin
-        // hantaran berjalan dalam main isolate; servis hanya menahan
-        // proses supaya tidak dibunuh sistem.
-      );
-      _running = true;
+      return await FlutterForegroundTask.isRunningService;
     } catch (_) {
-      // Jika servis gagal bermula (contoh kebenaran notifikasi), hantaran
-      // tetap diteruskan — hanya tanpa notifikasi latar belakang.
+      return false;
     }
   }
 
-  static void update(String title, String text) {
-    if (!_running) return;
-    try {
-      FlutterForegroundTask.updateService(
-        notificationTitle: title,
-        notificationText: text,
-      );
-    } catch (_) {}
+  /// Mulakan servis dgn task callback + butang Stop (2e). Kembalikan true
+  /// jika servis berjalan (atau sudah berjalan).
+  static Future<bool> start(String title, String text) async {
+    await _reconcile();
+    if (_running) return true;
+    final result = await FlutterForegroundTask.startService(
+      notificationTitle: title,
+      notificationText: text,
+      notificationButtons: const [
+        NotificationButton(id: 'stop', text: 'Stop'),
+      ],
+      callback: uploadTaskCallback,
+    );
+    _running = result is ServiceRequestSuccess;
+    return _running;
   }
 
   static Future<void> stop() async {
@@ -81,9 +83,4 @@ class ForegroundManager {
   }
 
   static bool get isRunning => _running;
-
-  static String progressText(
-      {required int batch, required int totalBatches, required int percent}) {
-    return 'Batch $batch/$totalBatches • $percent% • Discord Media Sender';
-  }
 }

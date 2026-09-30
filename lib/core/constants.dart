@@ -45,6 +45,22 @@ class AppLimits {
   /// Mentions dimatikan secara lalai dalam kapsyen (elak mass-mention);
   /// tukar kepada true untuk membenarkan @everyone/@role/@user.
   static const bool allowCaptionMentions = false;
+
+  /// 2d: denyar (heartbeat) sesi dianggap MATI selepas senyap selama ini —
+  /// sesi 'running' dgn denyar lebih lama boleh dipulihkan/ditawarkan
+  /// sambung semula. Nilai mesti melebihi selang denyar (5 saat).
+  static const int heartbeatIntervalMs = 5000;
+  static const int heartbeatStaleMs = 2 * 60 * 1000;
+
+  /// 1b: selang minimum semakan kemas kini automatik (6 jam).
+  static const int updateAutoCheckIntervalMs = 6 * 60 * 60 * 1000;
+
+  /// 1c: had panjang nota keluaran dalam dialog kemas kini (aksara).
+  static const int updateReleaseNotesCap = 5000;
+
+  /// 1d: tunggu sebelum servis dihentikan selepas sesi tamat — notifikasi
+  /// akhir sempat dilihat pengguna yang tidak membuka app.
+  static const Duration finalNotificationHold = Duration(seconds: 15);
 }
 
 /// Asas API Discord (versi v10).

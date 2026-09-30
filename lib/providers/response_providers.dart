@@ -34,6 +34,22 @@ class ResponseLogNotifier extends StateNotifier<List<ResponseLogEntry>> {
     state = next;
   }
 
+  /// 2c: tambah BERBILANG entri daripada buffer task isolate semasa
+  /// reattach — entri dengan id yang sudah wujud dilangkau (tiada pendua).
+  void addAll(Iterable<ResponseLogEntry> entries) {
+    final seen = {for (final e in state) e.id};
+    final merged = <ResponseLogEntry>[];
+    for (final e in entries) {
+      if (seen.add(e.id)) merged.add(e);
+    }
+    if (merged.isEmpty) return;
+    final next = [...merged.reversed, ...state];
+    if (next.length > AppLimits.responseLogCapacity) {
+      next.removeRange(AppLimits.responseLogCapacity, next.length);
+    }
+    state = next;
+  }
+
   void clear() => state = const [];
 }
 

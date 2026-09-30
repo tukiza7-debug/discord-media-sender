@@ -7,6 +7,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- 1d: pasang APK kemas kini melalui pemasang sistem -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <!-- 2f: minta pengecualian pengoptimuman bateri (pilihan, tidak wajib) -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
     <!-- Kebenaran baca media: DIPERLUKAN untuk mengimbas folder yang dipilih
          melalui dart:io (Directory.list). Pemilihan fail/ZIP kekal guna SAF
          (tanpa kebenaran), tetapi imbasan rekursif folder memerlukan

@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
 import 'providers/config_providers.dart';
+import 'providers/upload_providers.dart';
 import 'services/database_service.dart';
 import 'services/foreground_manager.dart';
 import 'services/media_service.dart';
+import 'services/update_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,28 +31,43 @@ Future<void> main() async {
     DeviceOrientation.landscapeRight,
   ]);
 
-  // Foreground service untuk hantaran latar belakang.
+  // Foreground service untuk hantaran latar belakang (2a).
   // B06: dilindungi — kegagalan plugin tidak boleh menggantung app.
   try {
     ForegroundManager.ensureInit();
   } catch (_) {}
-
-  // Pulihkan sesi yang tersangkut 'running' (app ditutup semasa hantar)
-  // menjadi 'cancelled' — Sejarah tidak lagi memaparkan status lama salah.
+  // 2c: daftar port komunikasi main isolate (event task → UI).
   try {
-    await DatabaseService.instance.healStaleSessions();
+    ForegroundManager.initCommunicationPort();
   } catch (_) {}
 
-  // B10: buang folder sementara ekstrak ZIP yang tertinggal.
+  final container = ProviderContainer();
+
+  // 2d: pulihkan sesi 'running' yang MATI (servis tidak berjalan + denyar
+  // basi). Sesi dgn baris pending TIDAK dibatalkan senyap — senarai
+  // "Resume sending?" dipaparkan oleh UI selepas frame pertama.
   try {
-    MediaService.cleanupZipTemp();
+    final serviceAlive = await ForegroundManager.isServiceRunning();
+    final resumable =
+        await DatabaseService.instance.healStaleSessions(serviceAlive: serviceAlive);
+    container.read(resumableSessionsProvider.notifier).state = resumable;
+  } catch (_) {}
+
+  // 2d: buang folder sementara ZIP yang tertinggal — folder milik sesi
+  // yang masih 'running' (boleh disambung semula) DILINDUNGI.
+  try {
+    await MediaService.cleanupZipTemp();
+  } catch (_) {}
+
+  // 1d: buang baki fail kemas kini daripada cubaan sebelumnya.
+  try {
+    await UpdateService.clearDownloadedFiles();
   } catch (_) {}
 
   // Muat konfigurasi & tetapan SEBELUM UI pertama (elak kelipan).
   // B06: kedua-dua muat dilindungi — jika storan selamat rosak
   // (auto-backup restore, reinstall, keystone reset), data dibuang dan
   // app terus HIDUP dengan nilai lalai (dulu: tergantung/crash di splash).
-  final container = ProviderContainer();
   try {
     await container.read(configProvider.notifier).load();
   } catch (_) {}

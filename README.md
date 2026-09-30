@@ -23,7 +23,7 @@ Fail `SHA256SUMS.txt` mengandungi checksum untuk pengesahan integriti.
 ## Ciri-ciri
 
 - **Dua mod hantaran** — Webhook (URL + nama bot + avatar) atau Bot (token + channel ID, pemilih channel dari senarai server, cipta channel baru). Uji Sambungan untuk kedua-dua mod. Konfigurasi disimpan dalam **flutter_secure_storage**.
-- **Pilih media** — gambar/video (PNG, JPG, GIF, WebP, BMP, AVIF; MP4, WebM, MOV, MKV, AVI, MPEG, OGG, 3GP), **folder penuh** (imbas semua subfolder), dan **ZIP** (diekstrak automatik). Maksimum 5,000 fail. Had saiz per fail boleh ditetapkan dalam Tetapan (10 / 20 / 50 / 100 MB, lalai 20 MB mengikut tier server Discord); fail melebihi had dilangkau dengan sebab jelas.
+- **Pilih media** — gambar/video (PNG, JPG, GIF, WebP, BMP, AVIF; MP4, WebM, MOV, MKV, AVI, MPEG, OGG, 3GP), **folder penuh** (imbas semua subfolder), dan **ZIP** (diekstrak automatik). Had saiz per fail boleh ditetapkan dalam Tetapan (10 / 20 / 50 / 100 MB, lalai 20 MB mengikut tier server Discord); fail melebihi had dilangkau dengan sebab jelas.
 - **Bulk send** — kelompok 10 fail/mesej (had Discord), kapsyen maks 2,000 aksara pada batch pertama, pratonton mesej ala Discord.
 - **Progres masa nyata** — bar animasi, kiraan berjaya/gagal, kelajuan, batch semasa, **Jeda/Sambung/Batal**.
 - **Auto-retry 3 kali** dengan backoff eksponensial + hormat rate limit Discord (HTTP 429, `Retry-After`).

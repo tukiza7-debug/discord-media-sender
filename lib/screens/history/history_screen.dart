@@ -267,8 +267,34 @@ class _SessionDetail extends ConsumerWidget {
   const _SessionDetail({required this.record});
   final SessionRecord record;
 
+  // 4c: pemetaan warna status — SAMA seperti _SessionCard.
+  (Color, String) _statusColor(String status) {
+    switch (status) {
+      case 'completed':
+        return (AppColors.success, 'Success');
+      case 'partial':
+        return (AppColors.warning, 'Partial');
+      case 'failed':
+        return (AppColors.danger, 'Failed');
+      case 'cancelled':
+        return (AppColors.textFaint, 'Cancelled');
+      case 'running':
+        return (AppColors.info, 'In progress');
+      default:
+        return (AppColors.info, status);
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final (statusColor, statusLabel) = _statusColor(record.status);
+    // 4c: blok sebab — untuk SETIAP status bukan-completed (sesi 'running'
+    // belum tamat, jadi tidak memerlukan sebab lagi).
+    final showReason = record.status != 'completed' && record.status != 'running';
+    final notSent = record.totalFiles - record.successCount - record.failedCount;
+    final reasonText = (record.reason == null || record.reason!.isEmpty)
+        ? 'No reason was recorded for this session (created before this update).'
+        : record.reason!;
     return FutureBuilder<List<FailedRecord>>(
       future: DatabaseService.instance.failures(sessionId: record.id),
       builder: (context, snap) {
@@ -288,6 +314,9 @@ class _SessionDetail extends ConsumerWidget {
                           Text('Session #${record.id ?? '-'}',
                               style: Theme.of(context).textTheme.titleMedium),
                           const SizedBox(height: 6),
+                          // 4c: lencana status (warna sama seperti _SessionCard).
+                          SoftBadge(statusLabel, color: statusColor),
+                          const SizedBox(height: 6),
                           Text(
                             '${formatDateTime(record.startedAt)}\n'
                             'Mode: ${record.mode == 'bot' ? 'Bot' : 'Webhook'} • Target: ${record.target}\n'
@@ -297,6 +326,79 @@ class _SessionDetail extends ConsumerWidget {
                                   height: 1.6,
                                 ),
                           ),
+                          if (showReason) ...[
+                            const SizedBox(height: 10),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: statusColor.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(AppRadius.sm),
+                              ),
+                              child: IntrinsicHeight(
+                                // IntrinsicHeight: jalur aksen mengikut
+                                // tinggi kandungan (stretch tanpa batas
+                                // tinggi = constraint infiniti).
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                  Container(
+                                    width: 3,
+                                    decoration: BoxDecoration(
+                                      color: statusColor,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'REASON',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .labelSmall
+                                              ?.copyWith(
+                                                fontSize: 9.5,
+                                                color: statusColor,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        // 4c: teks boleh dipilih & mesti balut penuh
+                                        // (tanpa pemotongan).
+                                        SelectableText(
+                                          reasonText,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(height: 1.5),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        SelectableText(
+                                          [
+                                            'Sent: ${record.successCount}',
+                                            'Failed: ${record.failedCount}',
+                                            if (notSent > 0) 'Not sent: $notSent',
+                                          ].join(' • '),
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .labelSmall
+                                              ?.copyWith(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurfaceVariant,
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ), // Row
+                            ), // IntrinsicHeight
+                            ), // Container (blok sebab)
+                          ],
                         ],
                       ),
                     ),
@@ -365,11 +467,25 @@ class _FailureRow extends StatelessWidget {
           const Icon(LucideIcons.alertCircle, size: 15, color: AppColors.danger),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              record.fileName,
-              style: Theme.of(context).textTheme.bodyMedium,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  record.fileName,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                // 4c: mesej ralat penuh — boleh dipilih, balut penuh
+                // (dulu TIDAK dipapar langsung, bukan sekadar terpotong).
+                SelectableText(
+                  record.errorMessage,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        height: 1.4,
+                      ),
+                ),
+              ],
             ),
           ),
           Text(

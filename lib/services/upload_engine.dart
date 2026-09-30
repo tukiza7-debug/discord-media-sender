@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 
 import '../core/constants.dart';
+import '../core/error_translator.dart';
+import '../core/security.dart';
 import '../models/models.dart';
 import 'discord_api.dart';
 import '../core/wait_utils.dart';
@@ -66,6 +68,14 @@ class UploadEngine {
 
   StreamController<UploadProgress>? _controller;
   CancelToken? _cancelToken;
+
+  /// 4b: sebab akhir sesi terakhir — ditetapkan di SETIAP laluan yang
+  /// menentukan outcome akhir. Null = completed / belum berjalan. Diakses
+  /// melalui getter yang SENTIASA menapis rahsia (URL webhook dsb.).
+  String? _lastReason;
+
+  String? get lastReason =>
+      _lastReason == null ? null : Security.sanitizeText(_lastReason!);
 
   bool _paused = false;
   bool _cancelRequested = false;
@@ -193,6 +203,7 @@ class UploadEngine {
     _paused = false;
     _cancelRequested = false;
     _watchdogFired = false;
+    _lastReason = null; // 4b: setiap sesi bermula tanpa sebab
     _controller ??= StreamController<UploadProgress>.broadcast();
 
     String status;
@@ -215,6 +226,8 @@ class UploadEngine {
         return true;
       }());
       status = _cancelRequested ? 'cancelled' : 'failed';
+      // 4b: sebab kemalangan tak dijangka (ditapis oleh getter).
+      _lastReason = 'Unexpected error: ${_briefError(e)}';
       _push(
         state: status == 'cancelled' ? EngineState.cancelled : EngineState.done,
         message: status == 'cancelled'
@@ -250,8 +263,13 @@ class UploadEngine {
     _cancelToken = CancelToken();
 
     // Pisahkan fail yang benar-benar wujud pada peranti. Fail hilang tidak
-    // lagi masuk kelompok.
-    final wanted = items.where((m) => m.status.canSend).toList(growable: false);
+    // lagi masuk kelompok. 3g: item 'oversized' (ditanda semasa pilih)
+    // DISERTAKAN juga — enjin menyemak semula melawan had SEMASA (pengguna
+    // mungkin sudah naikkan had dalam Tetapan) dan melaporkannya ke senarai
+    // Failed jika masih terlalu besar — tidak pernah dibuang senyap.
+    final wanted = items
+        .where((m) => m.status.canSend || m.status == MediaStatus.oversized)
+        .toList(growable: false);
     final sendable = <MediaItem>[];
     final missing = <MediaItem>[];
     for (final m in wanted) {
@@ -325,6 +343,10 @@ class UploadEngine {
     var uploadedBytes = 0;
     var activeMs = 0;
     var wasCancelled = false;
+    // 4b: jejak lokasi batal + label punca kegagalan setiap batch
+    // (untuk rumusan 'most common error' sebab akhir sesi).
+    var cancelledAtBatch = 0;
+    final labelFiles = <String, int>{};
 
     for (var b = 0; b < batches.length; b++) {
       // B09: blok jeda sebenar — pancarkan status 'paused' sekali.
@@ -339,6 +361,7 @@ class UploadEngine {
       }
       if (_cancelRequested) {
         wasCancelled = true;
+        cancelledAtBatch = b + 1;
         break;
       }
 
@@ -352,6 +375,8 @@ class UploadEngine {
       int? lastCode;
       int? lastDiscord;
       String? lastMsg;
+      var lastRateWaits = 0;
+      String? batchFailLabel;
 
       while (attempt < maxRetries && !ok && !_cancelRequested) {
         attempt++;
@@ -442,6 +467,7 @@ class UploadEngine {
         } else if (outcome.cancelled && _cancelRequested) {
           // Dibatalkan pengguna.
           wasCancelled = true;
+          cancelledAtBatch = b + 1;
         } else if (outcome.cancelled && _watchdogFired) {
           // Dibatalkan PENGAWAL MASA (bukan pengguna) — anggap percubaan
           // gagal dan cuba semula dengan token baharu (retryable).
@@ -456,11 +482,19 @@ class UploadEngine {
           lastDiscord = outcome.discordCode;
           lastMsg = outcome.errorMessage;
         }
+        lastRateWaits = outcome.rateLimitWaits;
 
         if (wasCancelled) break;
 
         // B02: gagal pantas bagi ralat KEEKAL — tiada retry, tiada backoff.
         if (!ok && !outcome.cancelled && !_isRetryable(outcome)) {
+          // 4b (laluan 2): terjemah sebab penuh utk sebab akhir sesi.
+          final expl = ErrorTranslator.explain(
+              statusCode: lastCode, discordCode: lastDiscord);
+          batchFailLabel = 'Discord rejected the upload '
+              '(HTTP ${lastCode ?? 'network'}'
+              "${lastDiscord != null ? ', Discord code $lastDiscord' : ''}): "
+              '${expl.title} — ${expl.detail}';
           _push(
             state: _effectiveActiveState,
             currentBatch: b + 1,
@@ -487,6 +521,7 @@ class UploadEngine {
           );
           if (!completed && _cancelRequested) {
             wasCancelled = true;
+            cancelledAtBatch = b + 1;
             break;
           }
         }
@@ -502,6 +537,19 @@ class UploadEngine {
         } catch (_) {}
       } else {
         failedFiles += batch.length;
+        // 4b (laluan 3/4/5): label utk batch yang habis cubaan — teks
+        // watchdog sedia ada ('Attempt timed out' / 'Upload stalled')
+        // mengalir melalui lastMsg; 429 melampau disebut dgn kiraan.
+        final label = batchFailLabel ??
+            _exhaustedLabel(
+              batchNumber: b + 1,
+              attempts: attempt,
+              rateWaits: lastRateWaits,
+              httpCode: lastCode,
+              discordCode: lastDiscord,
+              lastMsg: lastMsg,
+            );
+        labelFiles[label] = (labelFiles[label] ?? 0) + batch.length;
         _reportFailure(
             batch, b + 1, lastCode, lastDiscord, lastMsg ?? 'Unknown error',
             onBatchFailed);
@@ -536,6 +584,47 @@ class UploadEngine {
       status = 'partial';
     }
 
+    // 4b: sebab akhir sesi — SETIAP status bukan-completed MESTI ada
+    // sebab; completed kekal tanpa sebab (null).
+    if (wasCancelled) {
+      // 3h: fail yang tidak sempat dihantar dilapor dgn kiraan.
+      final rawNotSent = totalFiles - successFiles - failedFiles;
+      final notSent = rawNotSent < 0 ? 0 : rawNotSent;
+      _lastReason = 'Cancelled by user at batch '
+          '${cancelledAtBatch == 0 ? 1 : cancelledAtBatch} of ${batches.length}. '
+          '$successFiles file(s) sent, $notSent not sent.';
+    } else if (status == 'partial' || status == 'failed') {
+      // 4b (laluan 9): fail yang dilangkau sebelum hantar disebut.
+      final skipParts = <String>[
+        if (missing.isNotEmpty) '${missing.length} not found on device',
+        if (oversized.isNotEmpty) '${oversized.length} over the size limit',
+      ];
+      final skipNote =
+          skipParts.isEmpty ? '' : ' Also: ${skipParts.join(', ')}.';
+      if (labelFiles.isEmpty) {
+        // Semua kegagalan datang dari fail hilang/oversized (tiada batch).
+        _lastReason = status == 'failed'
+            ? 'All $totalFiles file(s) failed.$skipNote'
+            : '$failedFiles of $totalFiles file(s) failed.$skipNote';
+      } else {
+        // Ralat paling kerap — diukur ikut bilangan FAIL.
+        var best = '';
+        var bestCount = 0;
+        labelFiles.forEach((label, n) {
+          if (n > bestCount) {
+            best = label;
+            bestCount = n;
+          }
+        });
+        final countNote = bestCount > 1 ? ' ($bestCount files)' : '';
+        _lastReason = status == 'failed'
+            ? 'All $totalFiles file(s) failed. Most common error: '
+                '$best$countNote.$skipNote'
+            : '$failedFiles of $totalFiles file(s) failed. '
+                'Most common error: $best$countNote.$skipNote';
+      }
+    }
+
     _push(
       state: wasCancelled ? EngineState.cancelled : EngineState.done,
       successFiles: successFiles,
@@ -551,6 +640,27 @@ class UploadEngine {
     );
 
     return status;
+  }
+
+  /// 4b (laluan 3): label utk batch yang habis cubaan (retry exhausted /
+  /// watchdog / 429 melampau) — digunakan dalam rumusan sebab akhir sesi.
+  static String _exhaustedLabel({
+    required int batchNumber,
+    required int attempts,
+    required int rateWaits,
+    int? httpCode,
+    int? discordCode,
+    String? lastMsg,
+  }) {
+    if (httpCode == 429 && rateWaits >= AppLimits.maxRateLimitWaits) {
+      // 4b (laluan 4): tunggu rate-limit habis — sebut dgn kiraan.
+      return 'Batch $batchNumber failed after $attempts attempts — Discord '
+          'kept rate-limiting it ($rateWaits waits). Last error: '
+          '${ErrorTranslator.shortReason(statusCode: httpCode, discordCode: discordCode)}';
+    }
+    final lastErr = lastMsg ??
+        ErrorTranslator.shortReason(statusCode: httpCode, discordCode: discordCode);
+    return 'Batch $batchNumber failed after $attempts attempts. Last error: $lastErr';
   }
 
   /// B02: ralat yang BERBALOI dicuba semula — rangkaian, masa-luar,

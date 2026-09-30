@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_video_thumbnail_plus/flutter_video_thumbnail_plus.dart';
 
-import '../core/constants.dart';
 import '../models/models.dart';
 import '../services/media_service.dart';
 
@@ -13,14 +12,14 @@ class MediaListNotifier extends StateNotifier<List<MediaItem>> {
 
   int get readyCount => state.where((m) => m.status.canSend).length;
 
-  /// Tambah item; elak duplikasi ikut laluan; hormat had 5,000 fail.
+  /// Tambah item; elak duplikasi ikut laluan (fail sama dipilih dua kali
+  /// adalah pendua SENGJAHAH yang dibuang — lihat peraturan tugasan).
   void addAll(List<MediaItem> items) {
     if (items.isEmpty) return;
     final existingPaths = state.map((m) => m.path).toSet();
     final merged = <MediaItem>[...state];
     for (final item in items) {
       if (existingPaths.contains(item.path)) continue;
-      if (merged.length >= AppLimits.maxFiles) break;
       merged.add(item);
       existingPaths.add(item.path);
     }

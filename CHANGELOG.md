@@ -1,3 +1,37 @@
+## [1.0.8] — 2026-09-30
+
+### Kemas Kini
+- **NEW — No file count limit** — the 5,000-file cap is gone; folders and
+  ZIPs of any size can be queued (app stays stable: lists are lazy, ZIP
+  extraction stays streamed per-entry)
+- **NEW — 5 GB ZIP support** — both the ZIP input limit (was 1 GB) and the
+  extracted-total safety cap (was 2 GB) are raised to 5 GB; the limit
+  messages are derived from the constants so they can never drift again
+- **FIX — No image is silently dropped** — more image formats recognised
+  (HEIC/HEIF, TIFF, JFIF/JPE, APNG, SVG, ICO); unsupported files are now
+  counted and summarised ("N files ignored (unsupported type)") instead of
+  vanishing; only known junk (.thumbnails/.trash*/__MACOSX, ._*, .nomedia)
+  is skipped so dot-prefixed photos like ".photo.jpg" or images inside
+  ".Camera" folders are picked up; ZIP entries containing ".." are accepted
+  safely using the base name; one corrupt ZIP entry no longer aborts the
+  whole ZIP (it is reported per entry and the rest still extract)
+- **FIX — Failure records are never pruned** — the Failed list no longer
+  truncates at 1,000 rows or loses old entries to housekeeping; every failed
+  image stays retryable no matter how large the session
+- **FIX — Oversized files are never silent** — files above the per-file
+  limit stay visible with the "Too large" note, are counted in the session
+  result, get a clear Failed entry, and become sendable again as soon as
+  the limit is raised in Settings (no re-pick needed)
+- **NEW — Session Details explains every outcome** — cancelled, partial and
+  failed sessions now always show a Reason block: user cancel (with sent /
+  not-sent counts), Discord rejection (HTTP + Discord code, translated),
+  retries exhausted, rate-limit waits exhausted, watchdog timeout/stall,
+  unexpected errors, and skipped-file summaries (missing / over the size
+  limit); the failure rows now show the full error message
+- **FIX — Accounting invariant** — success + failed always equals the
+  session total; on cancel the unsent files are reported with a count and
+  marked re-sendable, never silently forgotten
+
 ## [1.0.7] — 2026-09-30
 
 ### Kemas Kini

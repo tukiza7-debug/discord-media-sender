@@ -320,6 +320,7 @@ class SessionRecord {
     required this.successCount,
     required this.failedCount,
     required this.status,
+    this.reason,
   });
 
   final int? id;
@@ -332,6 +333,10 @@ class SessionRecord {
   final int failedCount;
   final String status; // 'completed' | 'partial' | 'failed' | 'cancelled'
 
+  /// 4a: sebab status bukan-completed (null untuk sesi completed & sesi
+  /// lama yang dicipta sebelum kemas kini ini).
+  final String? reason;
+
   Map<String, dynamic> toMap() => {
         'id': id,
         'started_at': startedAt.millisecondsSinceEpoch,
@@ -342,6 +347,7 @@ class SessionRecord {
         'success': successCount,
         'failed': failedCount,
         'status': status,
+        'reason': reason,
       };
 
   static SessionRecord fromMap(Map<String, dynamic> m) => SessionRecord(
@@ -355,6 +361,7 @@ class SessionRecord {
         failedCount: (m['failed'] ?? 0) as int,
         // Normalise legacy Malay status keys written by older versions.
         status: _normalizeStatus((m['status'] ?? 'completed') as String),
+        reason: m['reason'] as String?,
       );
 
   static String _normalizeStatus(String s) {

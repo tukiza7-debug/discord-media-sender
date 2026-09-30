@@ -8,6 +8,7 @@ import '../models/models.dart';
 /// B24: skema v2 — indeks sessions(started_at), lajur discord_code pada
 /// failures, onUpgrade scaffolding, transaksi untuk hapus berbilang baris,
 /// dan pembersihan rekod lama (prune).
+/// v3 — lajur `reason` pada sessions (sebab status bukan-completed, 4a).
 class DatabaseService {
   DatabaseService._();
   static DatabaseService instance = DatabaseService._();
@@ -20,7 +21,7 @@ class DatabaseService {
     final dir = await getDatabasesPath();
     _db = await openDatabase(
       p.join(dir, 'discord_media_sender.db'),
-      version: 2,
+      version: 3,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, v) async {
         await db.execute('''
@@ -33,7 +34,8 @@ class DatabaseService {
             total_files INTEGER NOT NULL,
             success INTEGER NOT NULL,
             failed INTEGER NOT NULL,
-            status TEXT NOT NULL
+            status TEXT NOT NULL,
+            reason TEXT
           )
         ''');
         await db.execute('''
@@ -78,6 +80,14 @@ class DatabaseService {
                 'CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at DESC)');
           } catch (_) {}
         }
+        // v3: lajur reason pada sessions — sesi lama (sebelum kemas kini
+        // ini) kekal tanpa sebab (reason == null). Lajur mungkin sudah
+        // wujud pada pemasaran tertentu — cuba dan abaikan kegagalan.
+        if (oldVersion < 3) {
+          try {
+            await db.execute('ALTER TABLE sessions ADD COLUMN reason TEXT');
+          } catch (_) {}
+        }
       },
     );
     return _db!;
@@ -95,20 +105,25 @@ class DatabaseService {
     required int success,
     required int failed,
     required String status,
+    String? reason,
   }) async {
     final db = await database;
-    await db.update(
-      'sessions',
-      {'ended_at': DateTime.now().millisecondsSinceEpoch, 'success': success, 'failed': failed, 'status': status},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    final map = <String, dynamic>{
+      'ended_at': DateTime.now().millisecondsSinceEpoch,
+      'success': success,
+      'failed': failed,
+      'status': status,
+    };
+    // Tulis sebab hanya apabila ada — sebab sedia ada tidak ditindih null.
+    if (reason != null) map['reason'] = reason;
+    await db.update('sessions', map, where: 'id = ?', whereArgs: [id]);
   }
 
   /// Pulihkan sesi yang tersangkut pada status 'running' — berlaku apabila
   /// aplikasi ditutup semasa hantaran. Dipanggil sekali semasa app
   /// dimulakan supaya Sejarah tidak memaparkan "running" selamanya.
-  /// Sekali gus: B24 — buang rekod lama (kekal 500 sesi / 5000 kegagalan).
+  /// Sekali gus: B24 — buang sesi lama (kekal 500 sesi; kegagalan TIDAK
+  /// dibersihkan lagi — senarai Failed mesti kekal lengkap, 3f).
   Future<int> healStaleSessions() async {
     final db = await database;
     var changed = await db.update(
@@ -116,6 +131,9 @@ class DatabaseService {
       {
         'status': 'cancelled',
         'ended_at': DateTime.now().millisecondsSinceEpoch,
+        'reason': 'The app was closed or stopped while this session was '
+            'running. It was not cancelled by the user. Files not yet '
+            'sent were not delivered.',
       },
       where: "status IN ('running', 'berjalan')",
     );
@@ -125,8 +143,10 @@ class DatabaseService {
     return changed;
   }
 
-  /// B24: simpan maksimum [keepSessions] sesi & [keepFailures] kegagalan.
-  Future<void> pruneOldRecords({int keepSessions = 500, int keepFailures = 5000}) async {
+  /// B24: simpan maksimum [keepSessions] sesi. Kegagalan TIDAK dipangkas
+  /// (3f) — dengan bilangan fail tak terhad, rekod gagal boleh jadi
+  /// sangat banyak dan mesti kekal untuk Cuba Semula.
+  Future<void> pruneOldRecords({int keepSessions = 500}) async {
     final db = await database;
     await db.transaction((txn) async {
       await txn.delete(
@@ -134,12 +154,6 @@ class DatabaseService {
         where:
             'id NOT IN (SELECT id FROM sessions ORDER BY started_at DESC LIMIT ?)',
         whereArgs: [keepSessions],
-      );
-      await txn.delete(
-        'failures',
-        where:
-            'id NOT IN (SELECT id FROM failures ORDER BY created_at DESC LIMIT ?)',
-        whereArgs: [keepFailures],
       );
     });
   }
@@ -223,7 +237,9 @@ class DatabaseService {
     });
   }
 
-  Future<List<FailedRecord>> failures({int? sessionId, int limit = 1000}) async {
+  /// 3f: limit lalai NULL = pulangkan SEMUA baris — kegagalan tidak boleh
+  /// hilang dari senarai Cuba Semula hanya kerana bilangan besar.
+  Future<List<FailedRecord>> failures({int? sessionId, int? limit}) async {
     final db = await database;
     final rows = await db.query(
       'failures',

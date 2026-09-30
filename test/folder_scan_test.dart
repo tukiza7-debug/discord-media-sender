@@ -40,7 +40,8 @@ void main() {
       expect(names, containsAll(['a.jpg', 'b.mp4', 'c.png']));
     });
 
-    test('langkau fail tidak disokong & fail tersembunyi', () async {
+    test("3c/3b: imej berawalan titik DIAMBIL; jenis tidak disokong dirumuskan",
+        () async {
       mkFile('nota.txt');
       mkFile('dokumen.pdf');
       mkFile('.tersembunyi.png');
@@ -48,8 +49,15 @@ void main() {
 
       final res = await MediaService.instance.scanFolder(tempRoot.path);
 
-      expect(res.items.length, 1);
-      expect(res.items.first.name, 'sebenar.webp');
+      final names = res.items.map((m) => m.name).toSet();
+      expect(names, {'sebenar.webp', '.tersembunyi.png'},
+          reason: '3c: imej berawalan titik tidak lagi dilangkau');
+      expect(
+        res.skipped
+            .any((s) => s.contains('2 file(s) ignored (unsupported type)')),
+        isTrue,
+        reason: '3b: fail tidak disokong dirumuskan dgn satu baris',
+      );
     });
 
     test('jenis betul dikenal pasti (gambar vs video)', () async {

@@ -18,6 +18,7 @@ class BatchOutcome {
     this.httpCode,
     this.discordCode,
     this.errorMessage,
+    this.rateLimitWaits = 0,
   });
 
   final bool success;
@@ -25,6 +26,10 @@ class BatchOutcome {
   final int? httpCode;
   final int? discordCode;
   final String? errorMessage;
+
+  /// 4b: bilangan tunggu rate-limit 429 yang dihormati bagi outcome ini —
+  /// sebab akhir sesi perlu menyatakan 'waits exhausted' dgn kiraan.
+  final int rateLimitWaits;
 }
 
 /// Klien API Discord untuk mod Webhook & Bot.
@@ -248,6 +253,7 @@ class DiscordApi {
           httpCode: code,
           discordCode: dCode,
           errorMessage: expl.title,
+          rateLimitWaits: rateWaits,
         );
       } catch (err) {
         sw.stop();

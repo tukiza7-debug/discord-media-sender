@@ -8,6 +8,11 @@ class Security {
   static final _webhookRe =
       RegExp(r'(https?://[^/]+(?:/[^/]+)*?)/webhooks/(\d+)/([A-Za-z0-9_-]+)');
 
+  /// 4b: token bot (format `<id>.<6>.<27+>`) — ditopeng dalam teks bebas
+  /// supaya sebab sesi/log tidak boleh membocorkannya.
+  static final _botTokenRe = RegExp(
+      r'\b[MNO][A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{20,}\b');
+
   /// Tapiskan URL webhook: .../webhooks/1234****/xxxx****
   static String maskWebhookUrl(String url) {
     final m = _webhookRe.firstMatch(url.trim());
@@ -86,8 +91,10 @@ class Security {
     return sb.toString();
   }
 
-  /// Pastikan teks bebas (log txt) tidak mengandungi URL webhook penuh.
+  /// Pastikan teks bebas (log txt) tidak mengandungi URL webhook penuh
+  /// atau token bot (4b: sebab sesi turut melalui fungsi ini).
   static String sanitizeText(String text) {
-    return text.replaceAllMapped(_webhookRe, (m) => maskWebhookUrl(m.group(0)!));
+    return text.replaceAllMapped(_botTokenRe, (_) => 'Bot ****').replaceAllMapped(
+        _webhookRe, (m) => maskWebhookUrl(m.group(0)!));
   }
 }

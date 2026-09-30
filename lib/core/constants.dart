@@ -2,7 +2,6 @@
 class AppLimits {
   AppLimits._();
 
-  static const int maxFiles = 5000;
   static const int batchSize = 10; // had Discord: 10 lampiran per mesej
   static const int captionMaxLength = 2000;
   static const int maxRetries = 3;
@@ -17,10 +16,10 @@ class AppLimits {
   static const int defaultMaxFileMB = 20;
 
   /// Had saiz ZIP INPUT (berasingan daripada had muat naik).
-  static const int maxZipBytes = 1024 * 1024 * 1024; // 1 GB
+  static const int maxZipBytes = 5 * 1024 * 1024 * 1024; // 5 GB
 
   /// Had jumlah TIDARAMPAT selepas ekstrak ZIP (pertahanan zip-bomb).
-  static const int maxZipExtractBytes = 2 * 1024 * 1024 * 1024; // 2 GB
+  static const int maxZipExtractBytes = 5 * 1024 * 1024 * 1024; // 5 GB
 
   /// Backoff eksponensial antara percubaan semula (saat).
   static const List<int> retryBackoffSeconds = [1, 2, 4];
@@ -60,6 +59,7 @@ class MediaCatalog {
 
   static const imageExtensions = [
     'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif',
+    'heic', 'heif', 'tif', 'tiff', 'jfif', 'jpe', 'apng', 'svg', 'ico',
   ];
 
   static const videoExtensions = [
@@ -87,6 +87,15 @@ class MediaCatalog {
       'webp': 'image/webp',
       'bmp': 'image/bmp',
       'avif': 'image/avif',
+      'heic': 'image/heic',
+      'heif': 'image/heif',
+      'tif': 'image/tiff',
+      'tiff': 'image/tiff',
+      'jfif': 'image/jpeg',
+      'jpe': 'image/jpeg',
+      'apng': 'image/apng',
+      'svg': 'image/svg+xml',
+      'ico': 'image/x-icon',
       'mp4': 'video/mp4',
       'webm': 'video/webm',
       'mov': 'video/quicktime',

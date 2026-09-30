@@ -141,7 +141,11 @@ class UploadController extends StateNotifier<UploadUiState> {
     String caption,
     int maxFileMB,
   ) async {
-    final sendable = items.where((m) => m.status.canSend).toList(growable: false);
+    // 3g: item 'oversized' DISERTAKAN — enjin menyemak semula melawan had
+    // semasa dan melaporkannya ke Failed jika masih terlalu besar.
+    final sendable = items
+        .where((m) => m.status.canSend || m.status == MediaStatus.oversized)
+        .toList(growable: false);
     if (sendable.isEmpty) {
       return const SendResult(SendResultKind.rejected, 'No files are ready to send');
     }
@@ -200,6 +204,7 @@ class UploadController extends StateNotifier<UploadUiState> {
     // Enjin dijamin tidak melempar (ada try/catch dalaman) — tetapi jaga
     // jugakan: apa pun yang berlaku, sesi MESTI ditamatkan dalam DB.
     String status;
+    Object? guardError;
     try {
       status = await _engine.run(
         items: sendable,
@@ -266,8 +271,10 @@ class UploadController extends StateNotifier<UploadUiState> {
           );
         },
       );
-    } catch (_) {
+    } catch (e) {
       status = _engine.isCancelRequested ? 'cancelled' : 'failed';
+      // 4b (laluan 6): kemalangan lapisan pengawal — simpan utk sebab.
+      guardError = e;
     }
 
     // B03: 'already-running' — PULANG SEGERA TANPA KESAN SAMPINGAN
@@ -280,6 +287,18 @@ class UploadController extends StateNotifier<UploadUiState> {
     final successCount = _engine.lastProgress.successFiles;
     final failedCount = _engine.lastProgress.failedFiles;
 
+    // 4b: sebab sesi — enjin menetapkan bagi setiap status bukan-completed;
+    // fallback menjamin TIADA sesi bukan-completed ditulis tanpa sebab.
+    String? reason;
+    if (status != 'completed') {
+      reason = _engine.lastReason;
+      if (reason == null) {
+        final brief = guardError?.toString() ?? 'session ended as $status';
+        final cut = brief.length > 200 ? brief.substring(0, 200) : brief;
+        reason = Security.sanitizeText('Unexpected error: $cut');
+      }
+    }
+
     // SENTIASA tamatkan rekod sesi.
     try {
       await DatabaseService.instance.finishSession(
@@ -287,6 +306,7 @@ class UploadController extends StateNotifier<UploadUiState> {
         success: successCount,
         failed: failedCount,
         status: status,
+        reason: reason,
       );
     } catch (_) {}
     try {
@@ -358,6 +378,10 @@ class UploadController extends StateNotifier<UploadUiState> {
               success: 0,
               failed: 0,
               status: 'cancelled',
+              // 4b: sebab pemulihan zombi — kiraan mungkin tidak lengkap.
+              reason: 'Cancelled by user. The session had stopped '
+                  'unexpectedly and was recovered; file counts may be '
+                  'incomplete.',
             );
           } catch (_) {}
         }

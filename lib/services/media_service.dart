@@ -145,8 +145,11 @@ class MediaService {
   /// Pelaksanaan segerak imbasan folder — dipanggil dalam isolate latar.
   ///
   /// Laluan rekursif tahan-gagal: subfolder yang tidak boleh dibaca
-  /// dilangkau (tidak menggagalkan keseluruhan imbasan), fail/direktori
-  /// tersembunyi (bermula dengan '.') diabaikan.
+  /// dilangkau (tidak menggagalkan keseluruhan imbasan). HANYA direktori
+  /// / fail sampah yang dikenali dilangkau (3c) — imej berawalan titik
+  /// lain (cth. '.photo.jpg' atau gambar dalam folder '.Camera') diambil.
+  /// Fail jenis-tidak-disokong dihitung dan dirumuskan (3b) — tiada lagi
+  /// buang senyap.
   static MediaPickResult scanFolderSync(String rootPath, {int maxFileMB = AppLimits.defaultMaxFileMB}) {
     final dir = Directory(rootPath);
     if (!dir.existsSync()) {
@@ -154,6 +157,7 @@ class MediaService {
     }
 
     final found = <File>[];
+    final ignoredUnsupported = <String>[];
     var unreadableDirs = 0;
 
     void walk(Directory d) {
@@ -167,14 +171,19 @@ class MediaService {
       for (final e in entities) {
         try {
           if (e is Directory) {
-            // B19: langkau direktori tersembunyi/sistem (.thumbnails, .trash…)
+            // 3c: langkau direktori sampah SAHAJA (bukan semua '.').
             final dirName = e.uri.pathSegments.where((s) => s.isNotEmpty).last;
-            if (dirName.startsWith('.')) continue;
+            if (isJunkDir(dirName)) continue;
             walk(e);
           } else if (e is File) {
             final name = e.uri.pathSegments.last;
-            if (name.startsWith('.')) continue; // fail tersembunyi
-            if (MediaCatalog.isSupported(name)) found.add(e);
+            if (isJunkFile(name)) continue; // 3c: sampah dikenali sahaja
+            if (MediaCatalog.isSupported(name)) {
+              found.add(e);
+            } else {
+              // 3b: hitung — tiada lagi buang senyap.
+              ignoredUnsupported.add(name);
+            }
           }
         } catch (_) {
           // Entri tidak boleh diakses — langkau sahaja.
@@ -199,7 +208,30 @@ class MediaService {
     }
 
     found.sort((a, b) => a.path.toLowerCase().compareTo(b.path.toLowerCase()));
-    return _validate(found.map(_fromFile).toList(), maxFileMB: maxFileMB);
+    final unsupportedNote = _unsupportedSummary(ignoredUnsupported);
+    return _validate(
+      found.map(_fromFile).toList(),
+      maxFileMB: maxFileMB,
+      extraSkipped: unsupportedNote == null ? const [] : [unsupportedNote],
+    );
+  }
+
+  /// 3c: direktori sampah yang DIKENALI sahaja dilangkau — folder
+  /// berawalan titik lain (cth. '.Camera') tetap diimbas.
+  static bool isJunkDir(String name) {
+    final lower = name.toLowerCase();
+    return lower == '.thumbnails' || lower == '__macosx' || lower.startsWith('.trash');
+  }
+
+  /// 3c: fail sampah yang dikenali sahaja — '._*' (metadata Apple) dan
+  /// '.nomedia' (penanda Android).
+  static bool isJunkFile(String name) => name.startsWith('._') || name == '.nomedia';
+
+  /// 3b: satu baris rumusan bagi fail jenis-tidak-disokong (maks 3 contoh).
+  static String? _unsupportedSummary(List<String> names) {
+    if (names.isEmpty) return null;
+    return '${names.length} file(s) ignored (unsupported type): '
+        '${names.take(3).join(', ')}';
   }
 
   /// Ekstrak ZIP ke folder sementara dan pulangkan senarai media di dalamnya.
@@ -207,12 +239,13 @@ class MediaService {
   /// B10 — pembetulan besar:
   /// - ekstraksi berjalan dalam Isolate.run (UI tidak membeku, tiada ANR/OOM);
   /// - dibaca STRIM dari cakera (InputFileStream), bukan load penuh ke memori;
-  /// - nama dilindungi: sublaluan relatif dikekal selepas sanitasi, entri
-  ///   path-traversal (../, ..\) DITOLAK, nama berulang di-de-dup
-  ///   deterministik ("name (1).jpg");
+  /// - nama dilindungi: output ditulis RATA guna nama asas sahaja selepas
+  ///   sanitasi; nama asas tidak sah ('.', '..', kosong) DITOLAK (3d),
+  ///   nama berulang di-de-dup deterministik ("name (1).jpg");
   /// - jumlah saiz selepas ekstrak dihadkan (pertahanan zip-bomb);
   /// - folder sementara dibuang semasa kegagalan + dilaporkan pengecutan
   ///   (truncation) dengan sebab jelas.
+  /// - entri rosak dilaporkan satu persatu, ZIP diteruskan (3e).
   Future<MediaPickResult> extractZip(
     String zipPath, {
     int maxFileMB = AppLimits.defaultMaxFileMB,
@@ -223,8 +256,10 @@ class MediaService {
       return const MediaPickResult(items: [], info: 'ZIP file not found');
     }
     if (zf.lengthSync() > AppLimits.maxZipBytes) {
-      return const MediaPickResult(
-          items: [], info: 'ZIP file exceeds the 1 GB limit and was skipped');
+      return MediaPickResult(
+          items: [],
+          info:
+              'ZIP file exceeds the ${AppLimits.maxZipBytes ~/ (1024 * 1024 * 1024)} GB limit and was skipped');
     }
 
     final outDir = destination ??
@@ -272,6 +307,7 @@ class MediaService {
 
     final extracted = <File>[];
     final skipped = <String>[];
+    final ignoredUnsupported = <String>[];
     final usedNames = <String>{};
     var totalBytes = 0;
 
@@ -280,26 +316,31 @@ class MediaService {
     final archive = ZipDecoder().decodeBuffer(input);
     try {
       for (final entry in archive) {
-        if (extracted.length >= AppLimits.maxFiles) {
-          skipped.add('some entries skipped — exceeds the '
-              '${AppLimits.maxFiles} file limit');
-          break;
-        }
         if (!entry.isFile) continue;
 
         // Nama mentah: kendalikan '\\', pecahkan segmen laluan.
         final rawName = entry.name.replaceAll('\\', '/');
         final segments = rawName.split('/').where((s) => s.isNotEmpty).toList();
-        if (segments.isEmpty) continue;
 
-        // Path-traversal: sebarang '..' → TOLAK entri ini.
-        if (segments.contains('..')) {
+        // 3d: output ditulis RATA guna nama asas SAHAJA — sublaluan
+        // (termasuk '..') tidak relevan dan selamat diterima. TOLAK hanya
+        // jika nama asas tidak sah ('.', '..', kosong, atau mengandungi
+        // pemisah laluan), dan laporkan dalam skipped.
+        final base = segments.isEmpty ? '' : segments.last;
+        if (base.isEmpty ||
+            base == '.' ||
+            base == '..' ||
+            base.contains('/') ||
+            base.contains('\\')) {
           skipped.add('$rawName — rejected (invalid path)');
           continue;
         }
-        final base = segments.last;
-        if (base.startsWith('.')) continue; // entri sistem tersembunyi
-        if (!MediaCatalog.isSupported(base)) continue;
+        if (isJunkFile(base)) continue; // 3c: sampah dikenali sahaja
+        if (!MediaCatalog.isSupported(base)) {
+          // 3b: hitung — tiada lagi buang senyap.
+          ignoredUnsupported.add(base);
+          continue;
+        }
 
         // De-dup deterministik: IMG_001.jpg → 'IMG_001 (1).jpg', (2), …
         var finalName = base;
@@ -318,15 +359,26 @@ class MediaService {
         final uncompressed = entry.size;
         if (totalBytes + uncompressed > AppLimits.maxZipExtractBytes) {
           skipped.add('$base — skipped: extracted total exceeds the '
-              '${AppLimits.maxZipExtractBytes ~/ (1024 * 1024)} MB safety cap');
+              '${AppLimits.maxZipExtractBytes ~/ (1024 * 1024 * 1024)} GB safety cap');
           continue;
         }
 
         final dest = File('${outDir.path}${Platform.pathSeparator}$finalName');
-        // archive 3.6.1: entry.content didekompres per-entri (puncak memori
-        // = satu fail) — dibebaskan selepas setiap lelaran.
-        final bytes = entry.content as List<int>;
-        dest.writeAsBytesSync(bytes);
+        // 3e: entri rosak TIDAK menggugurkan keseluruhan ZIP — laporkan
+        // satu baris, buang fail separa, teruskan dgn entri berikutnya.
+        // (Ralat cakera penuh turut terperangkap di sini — 5f.); archive
+        // 3.6.1: entry.content didekompres per-entri (puncak memori = satu
+        // fail) — dibebaskan selepas setiap lelaran.
+        try {
+          final bytes = entry.content as List<int>;
+          dest.writeAsBytesSync(bytes);
+        } catch (_) {
+          skipped.add('$base — failed to extract');
+          try {
+            if (dest.existsSync()) dest.deleteSync();
+          } catch (_) {}
+          continue;
+        }
         totalBytes += uncompressed;
         extracted.add(dest);
       }
@@ -334,6 +386,10 @@ class MediaService {
     } finally {
       input.closeSync();
     }
+
+    // 3b: rumusan satu baris — fail tidak disokong tidak lagi senyap.
+    final unsupportedNote = _unsupportedSummary(ignoredUnsupported);
+    if (unsupportedNote != null) skipped.add(unsupportedNote);
 
     return _ZipExtractResult(
       items: extracted,
@@ -368,10 +424,6 @@ class MediaService {
     final skipped = <String>[...extraSkipped];
 
     for (final f in files) {
-      if (items.length >= AppLimits.maxFiles) {
-        skipped.add('${f.name} — exceeds the ${AppLimits.maxFiles} file limit');
-        continue;
-      }
       if (f.path.isEmpty || !File(f.path).existsSync()) {
         skipped.add('${f.name} — file not found');
         continue;

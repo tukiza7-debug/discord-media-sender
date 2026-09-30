@@ -73,7 +73,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         title: 'Pick & Send',
         steps: [
           'Pick Media, a whole Folder (Sent Folder) or a ZIP file',
-          'ZIP files are extracted automatically; up to 5,000 files',
+          'ZIP files are extracted automatically',
           'Write a caption (optional) and tap Send',
         ],
         note: 'Progress is tracked on the Responses screen; sending keeps running in the background.',

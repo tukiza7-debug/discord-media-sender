@@ -35,15 +35,20 @@ class FakeDb implements DatabaseService {
   final Map<String, Map<String, dynamic>> failuresByPath = {};
   final Set<String> deletedPaths = {};
   String? lastFinishStatus;
+  String? lastFinishReason;
 
   @override
   Future<int> createSession(SessionRecord s) async => ++sessionsCreated;
 
   @override
   Future<void> finishSession(int id,
-      {required int success, required int failed, required String status}) async {
+      {required int success,
+      required int failed,
+      required String status,
+      String? reason}) async {
     finishCalls++;
     lastFinishStatus = status;
+    lastFinishReason = reason;
   }
 
   @override
@@ -61,7 +66,7 @@ class FakeDb implements DatabaseService {
   }
 
   @override
-  Future<List<FailedRecord>> failures({int? sessionId, int limit = 1000}) async =>
+  Future<List<FailedRecord>> failures({int? sessionId, int? limit}) async =>
       [for (final m in failuresByPath.values) FailedRecord.fromMap(m)];
 
   @override
@@ -435,13 +440,16 @@ void main() {
   });
 
   // ------------------------------------------------------------- B10
-  test('B10: ZIP — nama berulang hidup, path-traversal ditolak', () async {
+  test("B10: ZIP — nama berulang hidup; entri '..' diterima guna nama asas",
+      () async {
     final dir = await Directory.systemTemp.createTemp('dms_zip');
     final zipFile = File('${dir.path}/in.zip');
     final archive = Archive();
     archive.addFile(ArchiveFile('a/IMG.png', 4, [1, 2, 3, 4]));
     archive.addFile(ArchiveFile('b/IMG.png', 4, [5, 6, 7, 8]));
+    // 3d: '..' TIDAK lagi menolak entri — output rata guna nama asas.
     archive.addFile(ArchiveFile('../evil.png', 4, [9, 9, 9, 9]));
+    archive.addFile(ArchiveFile('sub/../../deep.png', 4, [8, 8, 8, 8]));
     archive.addFile(ArchiveFile('.DS_Store', 2, [0, 0]));
     archive.addFile(ArchiveFile('notes.txt', 2, [0x61, 0x62]));
     zipFile.writeAsBytesSync(ZipEncoder().encode(archive)!);
@@ -451,14 +459,19 @@ void main() {
         .extractZip(zipFile.path, destination: outDir);
 
     final names = res.items.map((m) => m.name).toSet();
-    expect(names, {'IMG.png', 'IMG (1).png'},
+    expect(names, containsAll(['IMG.png', 'IMG (1).png']),
         reason: 'dedup deterministik — kedua-dua basename hidup');
-    expect(outDir.existsSync(), isTrue);
-    // Tiada traversal/tersembunyi/jenis tidak disokong di folder output.
-    expect(outDir.listSync().length, 2,
-        reason: 'evil.png / .DS_Store / notes.txt TIDAK diekstrak');
-    expect(res.skipped.any((s) => s.contains('../evil.png')), isTrue);
-    expect(res.skipped.any((s) => s.contains('invalid path')), isTrue);
+    expect(names, containsAll(['evil.png', 'deep.png']),
+        reason: "3d: entri '..' diterima rata guna nama asas sahaja");
+    // Tiada subdirektori dicipta — output sentiasa rata.
+    expect(outDir.listSync().whereType<Directory>(), isEmpty);
+    // .DS_Store / notes.txt tidak diekstrak; dirumuskan dgn satu baris.
+    expect(res.skipped.any((s) => s.contains('2 file(s) ignored')) ||
+        res.skipped.any((s) => s.contains('ignored (unsupported type)')),
+        isTrue,
+        reason: '3b: fail tidak disokong dirumuskan, bukan senyap');
+    expect(outDir.listSync().length, 4,
+        reason: '4 media diekstrak; notes.txt/.DS_Store tidak');
 
     outDir.deleteSync(recursive: true);
     dir.deleteSync(recursive: true);
